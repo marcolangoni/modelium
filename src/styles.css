@@ -243,7 +243,6 @@ body {
   z-index: 150;
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  transform: translateY(-50%);
 }
 
 .edge-info-row {
@@ -268,7 +267,6 @@ body {
   z-index: 150;
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  transform: translate(-100%, -50%);
 }
 
 .node-info-row {

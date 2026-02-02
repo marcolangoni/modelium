@@ -460,8 +460,7 @@ function getEdgePerpendicular(edge: EdgeSingular): { x: number; y: number } {
 }
 
 /**
- * Positions and updates the edge info panel near an edge.
- * Uses perpendicular offset to avoid overlapping with trash.
+ * Positions and updates the edge info panel near an edge, keeping it within viewport bounds.
  */
 function positionEdgeInfoPanel(edge: EdgeSingular): void {
   if (!edgeInfoPanel || !cy) return;
@@ -481,15 +480,42 @@ function positionEdgeInfoPanel(edge: EdgeSingular): void {
     <div class="edge-info-row"><span class="edge-info-label">Polarity:</span> ${polarity}</div>
   `;
 
+  edgeInfoPanel.style.display = 'block';
+  edgeInfoPanel.style.transform = '';
+
+  // Get panel dimensions
+  const panelRect = edgeInfoPanel.getBoundingClientRect();
+  const panelWidth = panelRect.width;
+  const panelHeight = panelRect.height;
+
+  // Get viewport dimensions
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const toolbarHeight = 48;
+
   // Position perpendicular to edge, on one side (positive perpendicular)
   const perp = getEdgePerpendicular(edge);
   const offset = 25;
-  const x = pos.x + perp.x * offset;
-  const y = pos.y + perp.y * offset;
+  let x = pos.x + perp.x * offset - panelWidth / 2;
+  let y = pos.y + perp.y * offset - panelHeight / 2;
+
+  // Clamp to viewport bounds
+  if (x < 0) {
+    x = 8;
+  }
+  if (x + panelWidth > viewportWidth) {
+    x = viewportWidth - panelWidth - 8;
+  }
+  if (y < toolbarHeight) {
+    y = toolbarHeight + 8;
+  }
+  if (y + panelHeight > viewportHeight) {
+    y = viewportHeight - panelHeight - 8;
+  }
 
   edgeInfoPanel.style.left = `${x}px`;
   edgeInfoPanel.style.top = `${y}px`;
-  edgeInfoPanel.style.display = 'block';
+  edgeInfoPanel.style.transform = 'none';
 }
 
 /**
@@ -502,7 +528,7 @@ function hideEdgeInfoPanel(): void {
 }
 
 /**
- * Positions and updates the node info panel on the left side of a node.
+ * Positions and updates the node info panel, keeping it within viewport bounds.
  */
 function positionNodeInfoPanel(node: NodeSingular): void {
   if (!nodeInfoPanel || !cy) return;
@@ -528,14 +554,51 @@ function positionNodeInfoPanel(node: NodeSingular): void {
   }
 
   nodeInfoPanel.innerHTML = html;
+  nodeInfoPanel.style.display = 'block';
+  
+  // Remove any existing transform to get accurate dimensions
+  nodeInfoPanel.style.transform = '';
 
-  // Position on the left side of the node (180 degrees)
-  const angle = Math.PI; // 180 degrees
-  const x = pos.x + Math.cos(angle) * offset;
-  const y = pos.y + Math.sin(angle) * offset;
+  // Get panel dimensions
+  const panelRect = nodeInfoPanel.getBoundingClientRect();
+  const panelWidth = panelRect.width;
+  const panelHeight = panelRect.height;
+
+  // Get viewport dimensions
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const toolbarHeight = 48; // Height of toolbar
+
+  // Try positioning on the left first (preferred)
+  let x = pos.x - offset - panelWidth;
+  let y = pos.y - panelHeight / 2;
+
+  // If panel goes off left edge, position on the right instead
+  if (x < 0) {
+    x = pos.x + offset;
+  }
+
+  // If panel goes off right edge, clamp to viewport
+  if (x + panelWidth > viewportWidth) {
+    x = viewportWidth - panelWidth - 8;
+  }
+
+  // Ensure x is not negative
+  if (x < 0) {
+    x = 8;
+  }
+
+  // Clamp y to viewport bounds
+  if (y < toolbarHeight) {
+    y = toolbarHeight + 8;
+  }
+  if (y + panelHeight > viewportHeight) {
+    y = viewportHeight - panelHeight - 8;
+  }
+
   nodeInfoPanel.style.left = `${x}px`;
   nodeInfoPanel.style.top = `${y}px`;
-  nodeInfoPanel.style.display = 'block';
+  nodeInfoPanel.style.transform = 'none';
 }
 
 /**

@@ -195,7 +195,7 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
           'border-width': 2,
           'border-color': '#2a7edf',
           'background-fit': 'contain',
-          'background-clip': 'none',
+          'background-clip': 'node',
           'background-width': '80%',
           'background-height': '40%',
           'background-position-y': '75%',
