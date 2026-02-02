@@ -7,6 +7,85 @@ let cy: Core | null = null;
 // Maximum history length per node
 const MAX_HISTORY_LENGTH = 100;
 
+// Color constants for value-based node coloring
+const COLOR_MIN = '#4a9eff';    // Blue - at min value
+const COLOR_MID = '#fbbf24';    // Yellow - at midpoint
+const COLOR_MAX = '#ef4444';    // Red - at max value
+
+/**
+ * Parses a hex color string to RGB components.
+ */
+function parseHex(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return { r: 0, g: 0, b: 0 };
+  return {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16),
+  };
+}
+
+/**
+ * Converts RGB components to a hex color string.
+ */
+function rgbToHex(r: number, g: number, b: number): string {
+  const toHex = (n: number) => Math.round(n).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/**
+ * Interpolates between two hex colors.
+ * @param color1 Starting color (hex)
+ * @param color2 Ending color (hex)
+ * @param t Interpolation factor (0 to 1)
+ */
+function interpolateColor(color1: string, color2: string, t: number): string {
+  const c1 = parseHex(color1);
+  const c2 = parseHex(color2);
+  return rgbToHex(
+    c1.r + (c2.r - c1.r) * t,
+    c1.g + (c2.g - c1.g) * t,
+    c1.b + (c2.b - c1.b) * t
+  );
+}
+
+/**
+ * Darkens a hex color by a given factor.
+ */
+function darkenColor(hex: string, factor: number): string {
+  const c = parseHex(hex);
+  return rgbToHex(
+    c.r * (1 - factor),
+    c.g * (1 - factor),
+    c.b * (1 - factor)
+  );
+}
+
+/**
+ * Calculates node color based on where the value falls between min and max.
+ * Blue (min) -> Yellow (mid) -> Red (max)
+ */
+function calculateNodeColor(value: number, min: number | undefined, max: number | undefined): string {
+  // If min or max not defined, return default blue
+  if (min === undefined || max === undefined) return COLOR_MIN;
+
+  const range = max - min;
+  if (range <= 0) return COLOR_MIN;
+
+  // Calculate ratio (0 to 1) and clamp
+  const ratio = (value - min) / range;
+  const clamped = Math.max(0, Math.min(1, ratio));
+
+  // Interpolate: blue (0) -> yellow (0.5) -> red (1)
+  if (clamped <= 0.5) {
+    const t = clamped * 2;
+    return interpolateColor(COLOR_MIN, COLOR_MID, t);
+  } else {
+    const t = (clamped - 0.5) * 2;
+    return interpolateColor(COLOR_MID, COLOR_MAX, t);
+  }
+}
+
 /**
  * Converts a ModeliumModel to Cytoscape elements format.
  */
@@ -120,6 +199,8 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
           'background-width': '80%',
           'background-height': '40%',
           'background-position-y': '75%',
+          'transition-property': 'background-color, border-color',
+          'transition-duration': '0.15s',
         },
       },
       {
@@ -182,7 +263,7 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
 }
 
 /**
- * Updates node values during simulation.
+ * Updates node values during simulation and applies value-based coloring.
  */
 export function updateNodeValues(values: Record<string, number>): void {
   if (!cy) return;
@@ -191,6 +272,15 @@ export function updateNodeValues(values: Record<string, number>): void {
     const node = cy.getElementById(nodeId);
     if (node.length > 0) {
       node.data('value', value);
+
+      // Apply value-based coloring
+      const min = node.data('min') as number | undefined;
+      const max = node.data('max') as number | undefined;
+      const bgColor = calculateNodeColor(value, min, max);
+      const borderColor = darkenColor(bgColor, 0.2);
+
+      node.style('background-color', bgColor);
+      node.style('border-color', borderColor);
     }
   }
 }
@@ -208,12 +298,17 @@ export function highlightBreached(nodeId: string): void {
 }
 
 /**
- * Resets all nodes to default style (removes breach highlighting).
+ * Resets all nodes to default style (removes breach highlighting and resets colors).
  */
 export function resetHighlights(): void {
   if (!cy) return;
 
   cy.nodes().removeClass('breached');
+  // Reset colors to default blue
+  cy.nodes().forEach((node) => {
+    node.style('background-color', COLOR_MIN);
+    node.style('border-color', darkenColor(COLOR_MIN, 0.2));
+  });
 }
 
 /**
@@ -234,14 +329,14 @@ export function appendNodeHistory(values: Record<string, number>): void {
     if (node.length > 0) {
       const history: number[] = node.data('history') || [];
       history.push(value);
-      
+
       // Limit history length
       if (history.length > MAX_HISTORY_LENGTH) {
         history.shift();
       }
-      
+
       node.data('history', history);
-      
+
       // Update sparkline image
       const sparklineUrl = createNodeSparkline(history);
       if (sparklineUrl) {

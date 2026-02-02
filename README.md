@@ -42,9 +42,16 @@ Open http://localhost:5173 in your browser.
 
 - Click **Play** to start the simulation
 - Watch values update in real-time with sparklines
+- **Dynamic node coloring**: nodes transition from blue (min) → yellow (mid) → red (max) based on their value position
+- Color transitions are **smooth and gradual** during simulation
 - Nodes with constraints turn **red** when breached
 - Simulation **auto-pauses** on constraint breach
 - Click **Resume** to continue or **Reset** to start over
+
+### Edge Inspection
+
+- **Hover over any edge** to see its properties panel (source, target, weight, polarity)
+- The panel appears near the edge midpoint and disappears when you move away
 
 ### Import/Export
 

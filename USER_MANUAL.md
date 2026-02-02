@@ -104,6 +104,8 @@ Nodes represent variables in your system. Each node has:
 
 Simply **click and drag** the node to reposition it on the canvas.
 
+> Note: While dragging a node, the delete button and edge handle are hidden for a cleaner experience.
+
 ---
 
 ## Working with Edges
@@ -142,6 +144,16 @@ Edges represent causal relationships between nodes. Each edge has:
 2. A red **×** button appears near the edge midpoint
 3. **Click** the × button to delete the edge
 
+### Inspecting an Edge
+
+When you hover over any edge, an **info panel** appears showing:
+- **From**: The source node label
+- **To**: The target node label
+- **Weight**: The influence multiplier
+- **Polarity**: The direction of influence (+ or -)
+
+The panel disappears automatically when you move your mouse away.
+
 ---
 
 ## Running Simulations
@@ -166,6 +178,18 @@ Where:
 1. Click **Play** in the toolbar
 2. Watch the node values change in real-time
 3. Sparklines appear inside each node showing value history
+
+### Value-Based Node Coloring
+
+During simulation, nodes with min/max constraints display **dynamic colors** based on where their current value falls in the range:
+
+| Value Position | Color |
+|----------------|-------|
+| At minimum | Blue |
+| At midpoint | Yellow |
+| At maximum | Red |
+
+Colors transition **smoothly and gradually** as values change, providing visual feedback on how close each node is to its limits.
 
 ### Pausing and Resuming
 
