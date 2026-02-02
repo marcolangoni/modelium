@@ -1,5 +1,7 @@
 # Modelium
 
+[![CI](https://github.com/marcolangoni/modelium/actions/workflows/ci.yml/badge.svg)](https://github.com/marcolangoni/modelium/actions/workflows/ci.yml)
+
 Modelium is a lightweight **System Dynamics** playground for building **causal graphs** and running **step-based simulations**.
 
 - **Visual graph editing**: Add, edit, and delete nodes and edges directly on the canvas
@@ -82,6 +84,27 @@ Open http://localhost:5173 in your browser.
 - **Vite** - Fast build tooling
 - **Cytoscape.js** - Graph rendering and interactions
 - **Web Worker** - Simulation runs off the main thread
+- **Vitest** - Fast unit testing
+
+## Testing
+
+Run the test suite:
+
+```bash
+npm test
+```
+
+Run tests in watch mode during development:
+
+```bash
+npm run test:watch
+```
+
+Generate coverage report:
+
+```bash
+npm run test:coverage
+```
 
 ## Project Structure
 
@@ -172,6 +195,9 @@ new_value[node] = current_value + dt × Σ(weight × source_value × polarity)
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build |
 | `npm run typecheck` | Run TypeScript type checking |
+| `npm test` | Run unit tests |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run test:coverage` | Run tests with coverage report |
 
 ## Documentation
 
