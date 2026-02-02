@@ -1,14 +1,40 @@
-import { getModel, loadModel, updateNodeValues, highlightBreached, resetHighlights, appendNodeHistory, clearNodeHistory } from '../graph/cytoscape.ts';
+import {
+  getModel,
+  loadModel,
+  updateNodeValues,
+  highlightBreached,
+  resetHighlights,
+  appendNodeHistory,
+  clearNodeHistory,
+  getCytoscape,
+  setNodeBreakpoint,
+  clearAllNodeBreakpoints,
+  highlightBreakpointHit,
+  clearBreakpointHitHighlight,
+} from '../graph/cytoscape.ts';
 import { disableEditing, enableEditing } from '../graph/interactions.ts';
 import { downloadJson, uploadJson } from './file-io.ts';
 import { createSimController, type SimController, type SimStatus } from './sim-controls.ts';
+import { createBreakpointManager, type BreakpointManager } from './breakpoints.ts';
+import { initKeyboardShortcuts, getSpeedLabel, type KeyboardHandler } from './keyboard.ts';
+import { initContextMenu } from './context-menu.ts';
 
 let simController: SimController | null = null;
+let breakpointManager: BreakpointManager | null = null;
+let keyboardHandler: KeyboardHandler | null = null;
+
+// UI elements that need to be accessed from callbacks
+let speedSpan: HTMLSpanElement | null = null;
+let stepBtn: HTMLButtonElement | null = null;
+let clearBreakpointsBtn: HTMLButtonElement | null = null;
 
 /**
  * Creates and mounts the toolbar with Export, Import, and simulation controls.
  */
 export function initToolbar(container: HTMLElement): void {
+  // Initialize breakpoint manager
+  breakpointManager = createBreakpointManager();
+
   // Export button
   const exportBtn = document.createElement('button');
   exportBtn.textContent = 'Export JSON';
@@ -33,15 +59,22 @@ export function initToolbar(container: HTMLElement): void {
         simController.reset();
       }
       resetHighlights();
+      clearAllNodeBreakpoints();
+      breakpointManager?.removeAll();
       loadModel(result.model);
     } else {
       alert(`Import failed: ${result.error}`);
     }
   };
 
+  // Separator
+  const separator1 = document.createElement('span');
+  separator1.className = 'toolbar-separator';
+
   // Play button
   const playBtn = document.createElement('button');
   playBtn.textContent = 'Play';
+  playBtn.title = 'Start simulation (Space to toggle)';
   playBtn.onclick = () => {
     if (!simController) {
       simController = createSimController(getModel);
@@ -50,10 +83,16 @@ export function initToolbar(container: HTMLElement): void {
 
     const status = simController.getStatus();
     if (status === 'paused') {
+      clearBreakpointHitHighlight();
       simController.resume();
     } else {
       resetHighlights();
       clearNodeHistory();
+      clearBreakpointHitHighlight();
+      // Send current breakpoints to the controller
+      if (breakpointManager) {
+        simController.setBreakpoints(breakpointManager.getAll());
+      }
       simController.start();
     }
   };
@@ -61,23 +100,93 @@ export function initToolbar(container: HTMLElement): void {
   // Pause button
   const pauseBtn = document.createElement('button');
   pauseBtn.textContent = 'Pause';
+  pauseBtn.title = 'Pause simulation (Space)';
   pauseBtn.style.display = 'none';
   pauseBtn.onclick = () => {
     simController?.pause();
   };
 
+  // Step button
+  stepBtn = document.createElement('button');
+  stepBtn.textContent = 'Step';
+  stepBtn.title = 'Execute single step (S or N)';
+  stepBtn.style.display = 'none';
+  stepBtn.onclick = () => {
+    if (!simController) {
+      simController = createSimController(getModel);
+      setupSimCallbacks(simController, playBtn, pauseBtn, resetBtn, statusSpan);
+      // Initialize but don't run
+      simController.start();
+      simController.pause();
+    }
+    clearBreakpointHitHighlight();
+    simController.step();
+  };
+
   // Reset button
   const resetBtn = document.createElement('button');
   resetBtn.textContent = 'Reset';
+  resetBtn.title = 'Reset simulation';
   resetBtn.disabled = true;
   resetBtn.onclick = () => {
     if (simController) {
       simController.reset();
       resetHighlights();
       clearNodeHistory();
+      clearBreakpointHitHighlight();
       // Reload the original model to restore initial values
       loadModel(getModel());
     }
+  };
+
+  // Separator
+  const separator2 = document.createElement('span');
+  separator2.className = 'toolbar-separator';
+
+  // Speed indicator
+  speedSpan = document.createElement('span');
+  speedSpan.className = 'speed-indicator';
+  speedSpan.textContent = '1x';
+  speedSpan.title = 'Simulation speed (use [ ] or - + to adjust)';
+
+  // Speed down button
+  const speedDownBtn = document.createElement('button');
+  speedDownBtn.textContent = '-';
+  speedDownBtn.className = 'speed-btn';
+  speedDownBtn.title = 'Halve speed ([ or -)';
+  speedDownBtn.onclick = () => {
+    if (!simController) return;
+    const currentInterval = simController.getIntervalMs();
+    const newInterval = Math.min(currentInterval * 2, 512);
+    simController.setSpeed(newInterval);
+    if (speedSpan) speedSpan.textContent = getSpeedLabel(newInterval);
+  };
+
+  // Speed up button
+  const speedUpBtn = document.createElement('button');
+  speedUpBtn.textContent = '+';
+  speedUpBtn.className = 'speed-btn';
+  speedUpBtn.title = 'Double speed (] or +)';
+  speedUpBtn.onclick = () => {
+    if (!simController) return;
+    const currentInterval = simController.getIntervalMs();
+    const newInterval = Math.max(currentInterval / 2, 4);
+    simController.setSpeed(newInterval);
+    if (speedSpan) speedSpan.textContent = getSpeedLabel(newInterval);
+  };
+
+  // Separator
+  const separator3 = document.createElement('span');
+  separator3.className = 'toolbar-separator';
+
+  // Clear breakpoints button
+  clearBreakpointsBtn = document.createElement('button');
+  clearBreakpointsBtn.textContent = 'Clear Breakpoints';
+  clearBreakpointsBtn.className = 'secondary';
+  clearBreakpointsBtn.title = 'Remove all breakpoints';
+  clearBreakpointsBtn.style.display = 'none';
+  clearBreakpointsBtn.onclick = () => {
+    breakpointManager?.removeAll();
   };
 
   // Status indicator
@@ -85,12 +194,54 @@ export function initToolbar(container: HTMLElement): void {
   statusSpan.className = 'status';
   statusSpan.textContent = '';
 
+  // Append elements
   container.appendChild(exportBtn);
   container.appendChild(importBtn);
+  container.appendChild(separator1);
   container.appendChild(playBtn);
   container.appendChild(pauseBtn);
+  container.appendChild(stepBtn);
   container.appendChild(resetBtn);
+  container.appendChild(separator2);
+  container.appendChild(speedDownBtn);
+  container.appendChild(speedSpan);
+  container.appendChild(speedUpBtn);
+  container.appendChild(separator3);
+  container.appendChild(clearBreakpointsBtn);
   container.appendChild(statusSpan);
+
+  // Setup breakpoint manager callbacks
+  breakpointManager.onChange((breakpoints) => {
+    // Update node visuals
+    clearAllNodeBreakpoints();
+    for (const bp of breakpoints) {
+      setNodeBreakpoint(bp.nodeId);
+    }
+
+    // Update SimController if running
+    if (simController) {
+      simController.setBreakpoints(breakpoints);
+    }
+
+    // Show/hide clear breakpoints button
+    if (clearBreakpointsBtn) {
+      clearBreakpointsBtn.style.display = breakpoints.length > 0 ? '' : 'none';
+    }
+  });
+
+  // Initialize context menu for breakpoints
+  const cy = getCytoscape();
+  if (cy) {
+    initContextMenu({ cy, breakpointManager });
+  }
+
+  // Initialize keyboard shortcuts
+  keyboardHandler = initKeyboardShortcuts(
+    () => simController,
+    (_intervalMs, label) => {
+      if (speedSpan) speedSpan.textContent = label;
+    }
+  );
 }
 
 function setupSimCallbacks(
@@ -108,6 +259,26 @@ function setupSimCallbacks(
   controller.onStatusChange((status, breach) => {
     updateButtonStates(status, playBtn, pauseBtn, resetBtn, statusSpan, breach?.nodeId);
   });
+
+  controller.onBreakpointHit((hit) => {
+    highlightBreakpointHit(hit.breakpoint.nodeId);
+    if (statusSpan) {
+      const conditionLabel = getConditionLabel(hit.breakpoint.condition);
+      statusSpan.textContent = `Breakpoint: ${hit.breakpoint.nodeId} ${conditionLabel} ${hit.breakpoint.value} (actual: ${hit.actualValue.toFixed(2)})`;
+      statusSpan.className = 'status breakpoint';
+    }
+  });
+}
+
+function getConditionLabel(condition: string): string {
+  switch (condition) {
+    case 'eq': return '=';
+    case 'gt': return '>';
+    case 'lt': return '<';
+    case 'gte': return '>=';
+    case 'lte': return '<=';
+    default: return condition;
+  }
 }
 
 function updateButtonStates(
@@ -126,6 +297,7 @@ function updateButtonStates(
       playBtn.textContent = 'Play';
       playBtn.style.display = '';
       pauseBtn.style.display = 'none';
+      if (stepBtn) stepBtn.style.display = 'none';
       resetBtn.disabled = true;
       statusSpan.textContent = '';
       enableEditing();
@@ -134,6 +306,7 @@ function updateButtonStates(
     case 'running':
       playBtn.style.display = 'none';
       pauseBtn.style.display = '';
+      if (stepBtn) stepBtn.style.display = 'none';
       resetBtn.disabled = false;
       statusSpan.textContent = 'Running...';
       statusSpan.className = 'status running';
@@ -144,6 +317,7 @@ function updateButtonStates(
       playBtn.textContent = 'Resume';
       playBtn.style.display = '';
       pauseBtn.style.display = 'none';
+      if (stepBtn) stepBtn.style.display = '';
       resetBtn.disabled = false;
       if (breachedNodeId) {
         highlightBreached(breachedNodeId);
@@ -159,10 +333,26 @@ function updateButtonStates(
       playBtn.textContent = 'Play';
       playBtn.style.display = '';
       pauseBtn.style.display = 'none';
+      if (stepBtn) stepBtn.style.display = 'none';
       resetBtn.disabled = false;
       statusSpan.textContent = 'Done';
       statusSpan.className = 'status';
       enableEditing();
       break;
   }
+}
+
+/**
+ * Returns the breakpoint manager instance.
+ */
+export function getBreakpointManager(): BreakpointManager | null {
+  return breakpointManager;
+}
+
+/**
+ * Disposes of the toolbar resources.
+ */
+export function disposeToolbar(): void {
+  keyboardHandler?.dispose();
+  simController?.dispose();
 }

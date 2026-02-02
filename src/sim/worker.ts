@@ -4,7 +4,7 @@
  */
 
 import type { ModeliumModel } from '../model/schema.ts';
-import type { SimConfig, SimMessage, SimResult, SimStateSnapshot } from './types.ts';
+import type { Breakpoint, BreakpointHit, SimConfig, SimMessage, SimResult, SimStateSnapshot } from './types.ts';
 import { compileGraph, computeStep, createInitialState, type SimState } from './engine.ts';
 
 // Worker state
@@ -15,6 +15,8 @@ let state: SimState | null = null;
 let initialState: SimState | null = null;
 let loopId: ReturnType<typeof setInterval> | null = null;
 let history: SimStateSnapshot[] = [];
+let intervalMs = 16; // Default ~60fps
+let breakpoints: Breakpoint[] = [];
 
 function postResult(result: SimResult): void {
   self.postMessage(result);
@@ -27,8 +29,36 @@ function stopLoop(): void {
   }
 }
 
-function runStep(): void {
-  if (!state || !compiledGraph || !config) return;
+/**
+ * Checks if a breakpoint condition is met.
+ */
+function checkBreakpointCondition(bp: Breakpoint, actualValue: number): boolean {
+  switch (bp.condition) {
+    case 'eq': return actualValue === bp.value;
+    case 'gt': return actualValue > bp.value;
+    case 'lt': return actualValue < bp.value;
+    case 'gte': return actualValue >= bp.value;
+    case 'lte': return actualValue <= bp.value;
+    default: return false;
+  }
+}
+
+/**
+ * Checks all breakpoints against current state values.
+ * Returns the first hit breakpoint, or null if none are hit.
+ */
+function checkBreakpoints(values: Record<string, number>): BreakpointHit | null {
+  for (const bp of breakpoints) {
+    const actualValue = values[bp.nodeId];
+    if (actualValue !== undefined && checkBreakpointCondition(bp, actualValue)) {
+      return { breakpoint: bp, actualValue };
+    }
+  }
+  return null;
+}
+
+function runStep(): boolean {
+  if (!state || !compiledGraph || !config) return false;
 
   const newState = computeStep(state, compiledGraph, config.dt);
   state = newState;
@@ -45,20 +75,30 @@ function runStep(): void {
   if (state.breached) {
     stopLoop();
     postResult({ type: 'paused', breach: state.breached });
-    return;
+    return false;
+  }
+
+  // Check for breakpoints
+  const hit = checkBreakpoints(state.values);
+  if (hit) {
+    stopLoop();
+    postResult({ type: 'breakpointHit', hit });
+    return false;
   }
 
   // Check for max steps reached
   if (state.step >= config.steps) {
     stopLoop();
     postResult({ type: 'done', history });
+    return false;
   }
+
+  return true;
 }
 
 function startLoop(): void {
   stopLoop();
-  // Run at ~60fps (16ms intervals)
-  loopId = setInterval(runStep, 16);
+  loopId = setInterval(runStep, intervalMs);
 }
 
 self.onmessage = (event: MessageEvent<SimMessage>) => {
@@ -69,6 +109,7 @@ self.onmessage = (event: MessageEvent<SimMessage>) => {
       stopLoop();
       model = msg.model;
       config = msg.config;
+      intervalMs = config.intervalMs ?? 16;
       compiledGraph = compileGraph(model);
       initialState = createInitialState(model);
       state = { ...initialState, values: { ...initialState.values } };
@@ -117,6 +158,29 @@ self.onmessage = (event: MessageEvent<SimMessage>) => {
     case 'stop':
       stopLoop();
       postResult({ type: 'done', history });
+      break;
+
+    case 'step':
+      if (!state) {
+        postResult({ type: 'error', message: 'Not initialized' });
+        return;
+      }
+      // Clear breach flag to allow stepping
+      state = { ...state, breached: null };
+      runStep();
+      postResult({ type: 'stepped', snapshot: { step: state.step, values: { ...state.values } } });
+      break;
+
+    case 'setSpeed':
+      intervalMs = msg.intervalMs;
+      // If currently running, restart with new interval
+      if (loopId !== null) {
+        startLoop();
+      }
+      break;
+
+    case 'updateBreakpoints':
+      breakpoints = msg.breakpoints;
       break;
 
     default:

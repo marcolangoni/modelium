@@ -4,27 +4,36 @@
  */
 
 import type { ModeliumModel } from '../model/schema.ts';
-import type { SimConfig, SimMessage, SimResult, SimStateSnapshot, BreachInfo } from '../sim/types.ts';
+import type { Breakpoint, BreakpointHit, SimConfig, SimMessage, SimResult, SimStateSnapshot, BreachInfo } from '../sim/types.ts';
 
 export type SimStatus = 'idle' | 'running' | 'paused' | 'done';
 
 type StateCallback = (snapshot: SimStateSnapshot) => void;
 type StatusCallback = (status: SimStatus, breach?: BreachInfo) => void;
+type BreakpointHitCallback = (hit: BreakpointHit) => void;
 
 export interface SimController {
   start(): void;
   pause(): void;
   resume(): void;
   reset(): void;
+  step(): void;
+  setSpeed(intervalMs: number): void;
+  setBreakpoints(breakpoints: Breakpoint[]): void;
   getStatus(): SimStatus;
+  getIntervalMs(): number;
   onStateChange(callback: StateCallback): void;
   onStatusChange(callback: StatusCallback): void;
+  onBreakpointHit(callback: BreakpointHitCallback): void;
   dispose(): void;
 }
+
+const DEFAULT_INTERVAL_MS = 16;
 
 const DEFAULT_CONFIG: SimConfig = {
   dt: 0.1,
   steps: 1000,
+  intervalMs: DEFAULT_INTERVAL_MS,
 };
 
 export function createSimController(getModel: () => ModeliumModel): SimController {
@@ -34,8 +43,11 @@ export function createSimController(getModel: () => ModeliumModel): SimControlle
   );
 
   let status: SimStatus = 'idle';
+  let currentIntervalMs = DEFAULT_INTERVAL_MS;
+  let currentBreakpoints: Breakpoint[] = [];
   const stateCallbacks: StateCallback[] = [];
   const statusCallbacks: StatusCallback[] = [];
+  const breakpointHitCallbacks: BreakpointHitCallback[] = [];
 
   function setStatus(newStatus: SimStatus, breach?: BreachInfo): void {
     status = newStatus;
@@ -62,6 +74,12 @@ export function createSimController(getModel: () => ModeliumModel): SimControlle
         }
         break;
 
+      case 'stepped':
+        for (const cb of stateCallbacks) {
+          cb(result.snapshot);
+        }
+        break;
+
       case 'paused':
         setStatus('paused', result.breach);
         break;
@@ -72,6 +90,13 @@ export function createSimController(getModel: () => ModeliumModel): SimControlle
 
       case 'done':
         setStatus('done');
+        break;
+
+      case 'breakpointHit':
+        setStatus('paused');
+        for (const cb of breakpointHitCallbacks) {
+          cb(result.hit);
+        }
         break;
 
       case 'error':
@@ -89,7 +114,17 @@ export function createSimController(getModel: () => ModeliumModel): SimControlle
   return {
     start(): void {
       const model = getModel();
-      postMessage({ type: 'init', model, config: DEFAULT_CONFIG });
+      const config: SimConfig = {
+        ...DEFAULT_CONFIG,
+        intervalMs: currentIntervalMs,
+      };
+      postMessage({ type: 'init', model, config });
+      // Send breakpoints after init
+      if (currentBreakpoints.length > 0) {
+        setTimeout(() => {
+          postMessage({ type: 'updateBreakpoints', breakpoints: currentBreakpoints });
+        }, 5);
+      }
       // Small delay to ensure init completes, then run
       setTimeout(() => {
         postMessage({ type: 'run' });
@@ -112,8 +147,26 @@ export function createSimController(getModel: () => ModeliumModel): SimControlle
       setStatus('idle');
     },
 
+    step(): void {
+      postMessage({ type: 'step' });
+    },
+
+    setSpeed(intervalMs: number): void {
+      currentIntervalMs = intervalMs;
+      postMessage({ type: 'setSpeed', intervalMs });
+    },
+
+    setBreakpoints(breakpoints: Breakpoint[]): void {
+      currentBreakpoints = breakpoints;
+      postMessage({ type: 'updateBreakpoints', breakpoints });
+    },
+
     getStatus(): SimStatus {
       return status;
+    },
+
+    getIntervalMs(): number {
+      return currentIntervalMs;
     },
 
     onStateChange(callback: StateCallback): void {
@@ -122,6 +175,10 @@ export function createSimController(getModel: () => ModeliumModel): SimControlle
 
     onStatusChange(callback: StatusCallback): void {
       statusCallbacks.push(callback);
+    },
+
+    onBreakpointHit(callback: BreakpointHitCallback): void {
+      breakpointHitCallbacks.push(callback);
     },
 
     dispose(): void {
