@@ -6,10 +6,6 @@ import type { ModeliumModel } from '../model/schema.ts';
 export interface SimConfig {
   dt: number;           // Time step size
   steps: number;        // Number of steps to run
-  clamp?: {
-    min: number;
-    max: number;
-  };
 }
 
 /**
@@ -17,7 +13,10 @@ export interface SimConfig {
  */
 export type SimMessage =
   | { type: 'init'; model: ModeliumModel; config: SimConfig }
-  | { type: 'step' }
+  | { type: 'run' }
+  | { type: 'pause' }
+  | { type: 'resume' }
+  | { type: 'reset' }
   | { type: 'stop' };
 
 /**
@@ -29,10 +28,22 @@ export interface SimStateSnapshot {
 }
 
 /**
+ * Information about a constraint breach.
+ */
+export interface BreachInfo {
+  nodeId: string;
+  constraint: 'min' | 'max';
+  value: number;
+  limit: number;
+}
+
+/**
  * Messages sent from simulation worker back to main thread.
  */
 export type SimResult =
   | { type: 'ready' }
   | { type: 'state'; snapshot: SimStateSnapshot }
+  | { type: 'paused'; breach: BreachInfo }
+  | { type: 'resumed' }
   | { type: 'done'; history: SimStateSnapshot[] }
   | { type: 'error'; message: string };

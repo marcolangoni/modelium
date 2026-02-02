@@ -12,7 +12,7 @@ export const seedModel: ModeliumModel = {
   },
   nodes: [
     { id: 'A', label: 'Cause', value: 10 },
-    { id: 'B', label: 'Effect', value: 0 },
+    { id: 'B', label: 'Effect', value: 0, max: 50 },
   ],
   edges: [
     { id: 'e1', from: 'A', to: 'B', weight: 0.5, polarity: '+' },

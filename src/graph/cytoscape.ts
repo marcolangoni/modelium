@@ -15,6 +15,8 @@ function modelToElements(model: ModeliumModel): ElementDefinition[] {
         id: node.id,
         label: node.label,
         value: node.value,
+        min: node.min,
+        max: node.max,
       },
     });
   }
@@ -42,11 +44,18 @@ export function getModel(): ModeliumModel {
     throw new Error('Cytoscape not initialized');
   }
 
-  const nodes = cy.nodes().map((node) => ({
-    id: node.id(),
-    label: node.data('label') as string,
-    value: node.data('value') as number,
-  }));
+  const nodes = cy.nodes().map((node) => {
+    const n: { id: string; label: string; value: number; min?: number; max?: number } = {
+      id: node.id(),
+      label: node.data('label') as string,
+      value: node.data('value') as number,
+    };
+    const min = node.data('min') as number | undefined;
+    const max = node.data('max') as number | undefined;
+    if (min !== undefined) n.min = min;
+    if (max !== undefined) n.max = max;
+    return n;
+  });
 
   const edges = cy.edges().map((edge) => ({
     id: edge.id(),
@@ -141,6 +150,13 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
           'border-width': 3,
         },
       },
+      {
+        selector: 'node.breached',
+        style: {
+          'background-color': '#ef4444',
+          'border-color': '#dc2626',
+        },
+      },
     ],
     layout: {
       name: 'grid',
@@ -154,4 +170,39 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
   cy.fit(undefined, 50);
 
   return cy;
+}
+
+/**
+ * Updates node values during simulation.
+ */
+export function updateNodeValues(values: Record<string, number>): void {
+  if (!cy) return;
+
+  for (const [nodeId, value] of Object.entries(values)) {
+    const node = cy.getElementById(nodeId);
+    if (node.length > 0) {
+      node.data('value', value);
+    }
+  }
+}
+
+/**
+ * Highlights a node as breached (turns red).
+ */
+export function highlightBreached(nodeId: string): void {
+  if (!cy) return;
+
+  const node = cy.getElementById(nodeId);
+  if (node.length > 0) {
+    node.addClass('breached');
+  }
+}
+
+/**
+ * Resets all nodes to default style (removes breach highlighting).
+ */
+export function resetHighlights(): void {
+  if (!cy) return;
+
+  cy.nodes().removeClass('breached');
 }

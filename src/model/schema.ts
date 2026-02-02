@@ -6,6 +6,8 @@ export interface ModeliumNode {
   id: string;
   label: string;
   value: number;
+  min?: number;
+  max?: number;
 }
 
 export interface ModeliumEdge {
@@ -66,6 +68,26 @@ export function validateModel(json: unknown): ValidationResult {
     }
     if (typeof node['value'] !== 'number' || !Number.isFinite(node['value'])) {
       return { valid: false, error: `Node at index ${i} has invalid "value"` };
+    }
+    // Validate optional min
+    if (node['min'] !== undefined) {
+      if (typeof node['min'] !== 'number' || !Number.isFinite(node['min'])) {
+        return { valid: false, error: `Node at index ${i} has invalid "min"` };
+      }
+    }
+    // Validate optional max
+    if (node['max'] !== undefined) {
+      if (typeof node['max'] !== 'number' || !Number.isFinite(node['max'])) {
+        return { valid: false, error: `Node at index ${i} has invalid "max"` };
+      }
+    }
+    // Validate min <= max if both present
+    if (
+      node['min'] !== undefined &&
+      node['max'] !== undefined &&
+      (node['min'] as number) > (node['max'] as number)
+    ) {
+      return { valid: false, error: `Node at index ${i} has min > max` };
     }
   }
 
