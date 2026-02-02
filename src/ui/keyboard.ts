@@ -5,12 +5,6 @@
 
 import type { SimController } from './sim-controls.ts';
 
-// Speed levels in milliseconds (lower = faster)
-const SPEED_LEVELS = [4, 8, 16, 32, 64, 128, 256, 512];
-const DEFAULT_SPEED_INDEX = 2; // 16ms = 1x speed
-
-type SpeedChangeCallback = (intervalMs: number, label: string) => void;
-
 export interface KeyboardHandler {
   dispose(): void;
 }
@@ -31,34 +25,29 @@ export function getSpeedLabel(intervalMs: number): string {
 
 /**
  * Initializes keyboard shortcuts for simulation control.
+ * Speed changes use the provided callbacks to work with or without simController.
  */
 export function initKeyboardShortcuts(
   getController: () => SimController | null,
-  onSpeedChange?: SpeedChangeCallback
+  onSpeedChange: (intervalMs: number, label: string) => void,
+  getIntervalMs: () => number,
+  setIntervalMs: (intervalMs: number) => void
 ): KeyboardHandler {
-  let currentSpeedIndex = DEFAULT_SPEED_INDEX;
-
   function halveSpeed(): void {
-    const controller = getController();
-    if (!controller) return;
-
-    if (currentSpeedIndex < SPEED_LEVELS.length - 1) {
-      currentSpeedIndex++;
-      const intervalMs = SPEED_LEVELS[currentSpeedIndex]!;
-      controller.setSpeed(intervalMs);
-      onSpeedChange?.(intervalMs, getSpeedLabel(intervalMs));
+    const currentInterval = getIntervalMs();
+    const newInterval = Math.min(currentInterval * 2, 512);
+    if (newInterval !== currentInterval) {
+      setIntervalMs(newInterval);
+      onSpeedChange(newInterval, getSpeedLabel(newInterval));
     }
   }
 
   function doubleSpeed(): void {
-    const controller = getController();
-    if (!controller) return;
-
-    if (currentSpeedIndex > 0) {
-      currentSpeedIndex--;
-      const intervalMs = SPEED_LEVELS[currentSpeedIndex]!;
-      controller.setSpeed(intervalMs);
-      onSpeedChange?.(intervalMs, getSpeedLabel(intervalMs));
+    const currentInterval = getIntervalMs();
+    const newInterval = Math.max(currentInterval / 2, 4);
+    if (newInterval !== currentInterval) {
+      setIntervalMs(newInterval);
+      onSpeedChange(newInterval, getSpeedLabel(newInterval));
     }
   }
 
