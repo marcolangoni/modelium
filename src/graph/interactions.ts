@@ -139,19 +139,65 @@ function createNodeInfoPanel(): HTMLElement {
  * Shows the node edit modal.
  */
 function showNodeEditModal(node: NodeSingular): void {
+  const currentNodeType = node.data('nodeType') || 'regular';
+  const currentEventType = node.data('eventType') || 'random';
+
   showModal({
     title: 'Edit Node',
     fields: [
       { key: 'label', label: 'Label', type: 'text', value: node.data('label') || '', required: true },
       { key: 'value', label: 'Value', type: 'number', value: node.data('value') ?? 0, required: true },
-      { key: 'min', label: 'Min', type: 'number', value: node.data('min') ?? '' },
-      { key: 'max', label: 'Max', type: 'number', value: node.data('max') ?? '' },
+      {
+        key: 'nodeType',
+        label: 'Node Type',
+        type: 'select',
+        value: currentNodeType,
+        options: [
+          { value: 'regular', label: 'Regular' },
+          { value: 'event', label: 'Event' },
+        ],
+      },
+      // Regular node fields
+      { key: 'min', label: 'Min', type: 'number', value: node.data('min') ?? '', visibleWhen: { field: 'nodeType', value: 'regular' } },
+      { key: 'max', label: 'Max', type: 'number', value: node.data('max') ?? '', visibleWhen: { field: 'nodeType', value: 'regular' } },
+      // Event node fields
+      {
+        key: 'eventType',
+        label: 'Event Type',
+        type: 'select',
+        value: currentEventType,
+        options: [
+          { value: 'random', label: 'Random Interval' },
+          { value: 'fixed', label: 'Fixed Interval' },
+        ],
+        visibleWhen: { field: 'nodeType', value: 'event' },
+      },
+      { key: 'intervalMin', label: 'Min Interval (steps)', type: 'number', value: node.data('intervalMin') ?? 1, visibleWhen: { field: 'eventType', value: 'random' } },
+      { key: 'intervalMax', label: 'Max Interval (steps)', type: 'number', value: node.data('intervalMax') ?? 10, visibleWhen: { field: 'eventType', value: 'random' } },
+      { key: 'interval', label: 'Interval (steps)', type: 'number', value: node.data('interval') ?? 5, visibleWhen: { field: 'eventType', value: 'fixed' } },
     ],
     onSave: (values) => {
       node.data('label', values['label']);
       node.data('value', values['value']);
-      node.data('min', values['min']);
-      node.data('max', values['max']);
+      node.data('nodeType', values['nodeType']);
+
+      if (values['nodeType'] === 'event') {
+        node.data('eventType', values['eventType']);
+        node.data('intervalMin', values['intervalMin']);
+        node.data('intervalMax', values['intervalMax']);
+        node.data('interval', values['interval']);
+        // Clear regular node fields
+        node.data('min', undefined);
+        node.data('max', undefined);
+      } else {
+        node.data('min', values['min']);
+        node.data('max', values['max']);
+        // Clear event fields
+        node.data('eventType', undefined);
+        node.data('intervalMin', undefined);
+        node.data('intervalMax', undefined);
+        node.data('interval', undefined);
+      }
       triggerChange();
     },
     onDelete: () => {
@@ -171,19 +217,56 @@ function showNewNodeModal(position: { x: number; y: number }): void {
     fields: [
       { key: 'label', label: 'Label', type: 'text', value: '', required: true },
       { key: 'value', label: 'Value', type: 'number', value: 0, required: true },
-      { key: 'min', label: 'Min', type: 'number', value: '' },
-      { key: 'max', label: 'Max', type: 'number', value: '' },
+      {
+        key: 'nodeType',
+        label: 'Node Type',
+        type: 'select',
+        value: 'regular',
+        options: [
+          { value: 'regular', label: 'Regular' },
+          { value: 'event', label: 'Event' },
+        ],
+      },
+      // Regular node fields
+      { key: 'min', label: 'Min', type: 'number', value: '', visibleWhen: { field: 'nodeType', value: 'regular' } },
+      { key: 'max', label: 'Max', type: 'number', value: '', visibleWhen: { field: 'nodeType', value: 'regular' } },
+      // Event node fields
+      {
+        key: 'eventType',
+        label: 'Event Type',
+        type: 'select',
+        value: 'random',
+        options: [
+          { value: 'random', label: 'Random Interval' },
+          { value: 'fixed', label: 'Fixed Interval' },
+        ],
+        visibleWhen: { field: 'nodeType', value: 'event' },
+      },
+      { key: 'intervalMin', label: 'Min Interval (steps)', type: 'number', value: 1, visibleWhen: { field: 'eventType', value: 'random' } },
+      { key: 'intervalMax', label: 'Max Interval (steps)', type: 'number', value: 10, visibleWhen: { field: 'eventType', value: 'random' } },
+      { key: 'interval', label: 'Interval (steps)', type: 'number', value: 5, visibleWhen: { field: 'eventType', value: 'fixed' } },
     ],
     onSave: (values) => {
+      const nodeData: Record<string, unknown> = {
+        id,
+        label: values['label'],
+        value: values['value'],
+        nodeType: values['nodeType'],
+      };
+
+      if (values['nodeType'] === 'event') {
+        nodeData.eventType = values['eventType'];
+        nodeData.intervalMin = values['intervalMin'];
+        nodeData.intervalMax = values['intervalMax'];
+        nodeData.interval = values['interval'];
+      } else {
+        nodeData.min = values['min'];
+        nodeData.max = values['max'];
+      }
+
       cy?.add({
         group: 'nodes',
-        data: {
-          id,
-          label: values['label'],
-          value: values['value'],
-          min: values['min'],
-          max: values['max'],
-        },
+        data: nodeData,
         position,
       });
       triggerChange();

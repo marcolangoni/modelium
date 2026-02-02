@@ -66,6 +66,7 @@ function runStep(): boolean {
   const snapshot: SimStateSnapshot = {
     step: state.step,
     values: { ...state.values },
+    triggeredEvents: state.triggeredEvents.length > 0 ? [...state.triggeredEvents] : undefined,
   };
   history.push(snapshot);
 
@@ -112,7 +113,12 @@ self.onmessage = (event: MessageEvent<SimMessage>) => {
       intervalMs = config.intervalMs ?? 16;
       compiledGraph = compileGraph(model);
       initialState = createInitialState(model);
-      state = { ...initialState, values: { ...initialState.values } };
+      state = {
+        ...initialState,
+        values: { ...initialState.values },
+        eventNextTrigger: { ...initialState.eventNextTrigger },
+        triggeredEvents: [],
+      };
       history = [];
       postResult({ type: 'ready' });
       break;
@@ -147,7 +153,12 @@ self.onmessage = (event: MessageEvent<SimMessage>) => {
         postResult({ type: 'error', message: 'Not initialized' });
         return;
       }
-      state = { ...initialState, values: { ...initialState.values } };
+      state = {
+        ...initialState,
+        values: { ...initialState.values },
+        eventNextTrigger: { ...initialState.eventNextTrigger },
+        triggeredEvents: [],
+      };
       history = [];
       postResult({
         type: 'state',
@@ -170,7 +181,14 @@ self.onmessage = (event: MessageEvent<SimMessage>) => {
       // Only send 'stepped' if runStep() didn't hit a breakpoint or breach
       const stepSucceeded = runStep();
       if (stepSucceeded) {
-        postResult({ type: 'stepped', snapshot: { step: state.step, values: { ...state.values } } });
+        postResult({
+          type: 'stepped',
+          snapshot: {
+            step: state.step,
+            values: { ...state.values },
+            triggeredEvents: state.triggeredEvents.length > 0 ? [...state.triggeredEvents] : undefined,
+          },
+        });
       }
       break;
 
