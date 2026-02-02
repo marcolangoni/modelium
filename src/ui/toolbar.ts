@@ -23,10 +23,46 @@ let simController: SimController | null = null;
 let breakpointManager: BreakpointManager | null = null;
 let keyboardHandler: KeyboardHandler | null = null;
 
+// Module-level speed tracking (works before simulation starts)
+const DEFAULT_INTERVAL_MS = 16;
+let currentIntervalMs = DEFAULT_INTERVAL_MS;
+
+// Callback for speed changes (for persistence)
+let onSpeedChangeCallback: (() => void) | null = null;
+
 // UI elements that need to be accessed from callbacks
 let speedSpan: HTMLSpanElement | null = null;
 let stepBtn: HTMLButtonElement | null = null;
 let clearBreakpointsBtn: HTMLButtonElement | null = null;
+
+/**
+ * Sets the callback to be called when speed changes.
+ */
+export function setOnSpeedChangeCallback(callback: () => void): void {
+  onSpeedChangeCallback = callback;
+}
+
+/**
+ * Returns the current speed interval in milliseconds.
+ */
+export function getCurrentIntervalMs(): number {
+  return currentIntervalMs;
+}
+
+/**
+ * Sets the speed interval in milliseconds.
+ * Updates both the module-level state and the simController if running.
+ */
+export function setCurrentIntervalMs(intervalMs: number): void {
+  currentIntervalMs = intervalMs;
+  if (simController) {
+    simController.setSpeed(intervalMs);
+  }
+  if (speedSpan) {
+    speedSpan.textContent = getSpeedLabel(intervalMs);
+  }
+  onSpeedChangeCallback?.();
+}
 
 /**
  * Creates and mounts the toolbar with Export, Import, and simulation controls.
@@ -77,7 +113,7 @@ export function initToolbar(container: HTMLElement): void {
   playBtn.title = 'Start simulation (Space to toggle)';
   playBtn.onclick = () => {
     if (!simController) {
-      simController = createSimController(getModel);
+      simController = createSimController(getModel, currentIntervalMs);
       setupSimCallbacks(simController, playBtn, pauseBtn, resetBtn, statusSpan);
     }
 
@@ -113,7 +149,7 @@ export function initToolbar(container: HTMLElement): void {
   stepBtn.style.display = 'none';
   stepBtn.onclick = () => {
     if (!simController) {
-      simController = createSimController(getModel);
+      simController = createSimController(getModel, currentIntervalMs);
       setupSimCallbacks(simController, playBtn, pauseBtn, resetBtn, statusSpan);
       // Initialize only, don't start running
       simController.init();
@@ -158,11 +194,8 @@ export function initToolbar(container: HTMLElement): void {
   speedDownBtn.className = 'speed-btn';
   speedDownBtn.title = 'Halve speed ([ or -)';
   speedDownBtn.onclick = () => {
-    if (!simController) return;
-    const currentInterval = simController.getIntervalMs();
-    const newInterval = Math.min(currentInterval * 2, 512);
-    simController.setSpeed(newInterval);
-    if (speedSpan) speedSpan.textContent = getSpeedLabel(newInterval);
+    const newInterval = Math.min(currentIntervalMs * 2, 512);
+    setCurrentIntervalMs(newInterval);
   };
 
   // Speed up button
@@ -171,11 +204,8 @@ export function initToolbar(container: HTMLElement): void {
   speedUpBtn.className = 'speed-btn';
   speedUpBtn.title = 'Double speed (] or +)';
   speedUpBtn.onclick = () => {
-    if (!simController) return;
-    const currentInterval = simController.getIntervalMs();
-    const newInterval = Math.max(currentInterval / 2, 4);
-    simController.setSpeed(newInterval);
-    if (speedSpan) speedSpan.textContent = getSpeedLabel(newInterval);
+    const newInterval = Math.max(currentIntervalMs / 2, 4);
+    setCurrentIntervalMs(newInterval);
   };
 
   // Separator
@@ -243,7 +273,9 @@ export function initToolbar(container: HTMLElement): void {
     () => simController,
     (_intervalMs, label) => {
       if (speedSpan) speedSpan.textContent = label;
-    }
+    },
+    () => currentIntervalMs,
+    setCurrentIntervalMs
   );
 }
 
@@ -261,6 +293,10 @@ function setupSimCallbacks(
 
   controller.onStatusChange((status, breach) => {
     updateButtonStates(status, playBtn, pauseBtn, resetBtn, statusSpan, breach?.nodeId);
+    // Save state when simulation stops (paused or done)
+    if (status === 'paused' || status === 'done') {
+      onSpeedChangeCallback?.();
+    }
   });
 
   controller.onBreakpointHit((hit) => {

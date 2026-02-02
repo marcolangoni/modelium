@@ -13,15 +13,44 @@ const COLOR_MID = '#fbbf24';    // Yellow - at midpoint
 const COLOR_MAX = '#ef4444';    // Red - at max value
 
 /**
+ * Formats a numeric value to fit inside a node.
+ * Uses 2-4 decimal places based on magnitude.
+ */
+function formatValue(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toFixed(0);
+  if (abs >= 100) return value.toFixed(1);
+  if (abs >= 1) return value.toFixed(2);
+  return value.toFixed(4);
+}
+
+/**
+ * Computes the multi-line label for a node.
+ * Format: label\nvalue\n[min - max]
+ */
+function computeNodeLabel(label: string, value: number, min: number | undefined, max: number | undefined): string {
+  const lines: string[] = [label, formatValue(value)];
+  
+  // Add bounds line if min or max is defined
+  if (min !== undefined || max !== undefined) {
+    const minStr = min !== undefined ? formatValue(min) : '';
+    const maxStr = max !== undefined ? formatValue(max) : '';
+    lines.push(`[${minStr} - ${maxStr}]`);
+  }
+  
+  return lines.join('\n');
+}
+
+/**
  * Parses a hex color string to RGB components.
  */
 function parseHex(hex: string): { r: number; g: number; b: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return { r: 0, g: 0, b: 0 };
   return {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16),
+    r: parseInt(result[1]!, 16),
+    g: parseInt(result[2]!, 16),
+    b: parseInt(result[3]!, 16),
   };
 }
 
@@ -161,22 +190,56 @@ export function getModel(): ModeliumModel {
 
 /**
  * Replaces the current graph with a new model.
+ * Optionally applies saved positions.
  */
-export function loadModel(model: ModeliumModel): void {
+export function loadModel(model: ModeliumModel, positions?: Record<string, { x: number; y: number }>): void {
   if (!cy) {
     throw new Error('Cytoscape not initialized');
   }
 
   cy.elements().remove();
   cy.add(modelToElements(model));
-  cy.layout({ name: 'grid', padding: 50 }).run();
-  cy.fit(undefined, 50);
+
+  // Apply saved positions if provided
+  if (positions) {
+    for (const [nodeId, pos] of Object.entries(positions)) {
+      const node = cy.getElementById(nodeId);
+      if (node.length > 0) {
+        node.position(pos);
+      }
+    }
+    cy.fit(undefined, 50);
+  } else {
+    cy.layout({ name: 'grid', padding: 50 }).run();
+    cy.fit(undefined, 50);
+  }
+}
+
+/**
+ * Returns the current positions of all nodes.
+ */
+export function getPositions(): Record<string, { x: number; y: number }> {
+  if (!cy) {
+    return {};
+  }
+
+  const positions: Record<string, { x: number; y: number }> = {};
+  cy.nodes().forEach((node) => {
+    const pos = node.position();
+    positions[node.id()] = { x: pos.x, y: pos.y };
+  });
+  return positions;
 }
 
 /**
  * Initializes Cytoscape on the given container with the provided model.
+ * Optionally applies saved positions.
  */
-export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
+export function initGraph(
+  container: HTMLElement,
+  model: ModeliumModel,
+  positions?: Record<string, { x: number; y: number }>
+): Core {
   cy = cytoscape({
     container,
     elements: modelToElements(model),
@@ -185,22 +248,30 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
         selector: 'node',
         style: {
           'background-color': '#4a9eff',
-          'label': 'data(label)',
+          'label': (node: cytoscape.NodeSingular) => {
+            const label = node.data('label') as string || '';
+            const value = node.data('value') as number ?? 0;
+            const min = node.data('min') as number | undefined;
+            const max = node.data('max') as number | undefined;
+            return computeNodeLabel(label, value, min, max);
+          },
           'color': '#fff',
           'text-valign': 'center',
           'text-halign': 'center',
-          'font-size': '12px',
-          'width': 60,
-          'height': 60,
+          'font-size': '10px',
+          'text-wrap': 'wrap',
+          'text-max-width': '70px',
+          'width': 80,
+          'height': 80,
           'border-width': 2,
           'border-color': '#2a7edf',
           'background-fit': 'contain',
           'background-clip': 'node',
           'background-width': '80%',
-          'background-height': '40%',
-          'background-position-y': '75%',
+          'background-height': '30%',
+          'background-position-y': '85%',
           'transition-property': 'background-color, border-color',
-          'transition-duration': '0.15s',
+          'transition-duration': 150,
         },
       },
       {
@@ -273,6 +344,16 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
     maxZoom: 3,
   });
 
+  // Apply saved positions if provided
+  if (positions) {
+    for (const [nodeId, pos] of Object.entries(positions)) {
+      const node = cy.getElementById(nodeId);
+      if (node.length > 0) {
+        node.position(pos);
+      }
+    }
+  }
+
   // Fit to viewport after initial render
   cy.fit(undefined, 50);
 
@@ -298,6 +379,10 @@ export function updateNodeValues(values: Record<string, number>): void {
 
       node.style('background-color', bgColor);
       node.style('border-color', borderColor);
+
+      // Refresh label to show updated value
+      const label = node.data('label') as string || '';
+      node.style('label', computeNodeLabel(label, value, min, max));
     }
   }
 }

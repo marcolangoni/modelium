@@ -8,6 +8,23 @@ import { showModal } from '../ui/modal.ts';
 let cy: Core | null = null;
 let editingEnabled = true;
 
+// Callback for triggering saves on changes
+let onChangeCallback: (() => void) | null = null;
+
+/**
+ * Sets the callback to be called when the graph changes.
+ */
+export function setOnChangeCallback(callback: () => void): void {
+  onChangeCallback = callback;
+}
+
+/**
+ * Triggers the change callback if set.
+ */
+function triggerChange(): void {
+  onChangeCallback?.();
+}
+
 // Overlay elements
 let trashOverlay: HTMLElement | null = null;
 let edgeHandleOverlay: HTMLElement | null = null;
@@ -135,9 +152,11 @@ function showNodeEditModal(node: NodeSingular): void {
       node.data('value', values['value']);
       node.data('min', values['min']);
       node.data('max', values['max']);
+      triggerChange();
     },
     onDelete: () => {
       node.remove();
+      triggerChange();
     },
   });
 }
@@ -167,6 +186,7 @@ function showNewNodeModal(position: { x: number; y: number }): void {
         },
         position,
       });
+      triggerChange();
     },
   });
 }
@@ -194,9 +214,11 @@ function showEdgeEditModal(edge: EdgeSingular): void {
     onSave: (values) => {
       edge.data('weight', values['weight']);
       edge.data('polarity', values['polarity']);
+      triggerChange();
     },
     onDelete: () => {
       edge.remove();
+      triggerChange();
     },
   });
 }
@@ -233,6 +255,7 @@ function showNewEdgeModal(sourceId: string, targetId: string): void {
           polarity: values['polarity'],
         },
       });
+      triggerChange();
     },
   });
 }
@@ -296,7 +319,7 @@ function findGapMidpoints(occupiedAngles: number[]): number[] {
 
   if (occupiedAngles.length === 1) {
     // Single edge: return the opposite angle
-    return [normalizeAngle(occupiedAngles[0] + Math.PI)];
+    return [normalizeAngle(occupiedAngles[0]! + Math.PI)];
   }
 
   // Sort angles
@@ -306,8 +329,8 @@ function findGapMidpoints(occupiedAngles: number[]): number[] {
 
   // Find gaps between consecutive angles
   for (let i = 0; i < sorted.length; i++) {
-    const current = sorted[i];
-    const next = sorted[(i + 1) % sorted.length];
+    const current = sorted[i]!;
+    const next = sorted[(i + 1) % sorted.length]!;
 
     // Calculate gap, handling wrap-around
     let gap: number;
@@ -332,14 +355,14 @@ function findGapMidpoints(occupiedAngles: number[]): number[] {
 function findClosestAngle(candidates: number[], targetAngle: number): number {
   if (candidates.length === 0) return 0;
 
-  let closest = candidates[0];
+  let closest = candidates[0]!;
   let minDistance = angularDistance(closest, targetAngle);
 
   for (let i = 1; i < candidates.length; i++) {
-    const distance = angularDistance(candidates[i], targetAngle);
+    const distance = angularDistance(candidates[i]!, targetAngle);
     if (distance < minDistance) {
       minDistance = distance;
-      closest = candidates[i];
+      closest = candidates[i]!;
     }
   }
 
@@ -519,15 +542,6 @@ function positionEdgeInfoPanel(edge: EdgeSingular): void {
 }
 
 /**
- * Hides the edge info panel.
- */
-function hideEdgeInfoPanel(): void {
-  if (edgeInfoPanel) {
-    edgeInfoPanel.style.display = 'none';
-  }
-}
-
-/**
  * Positions and updates the node info panel, keeping it within viewport bounds.
  */
 function positionNodeInfoPanel(node: NodeSingular): void {
@@ -602,15 +616,6 @@ function positionNodeInfoPanel(node: NodeSingular): void {
 }
 
 /**
- * Hides the node info panel.
- */
-function hideNodeInfoPanel(): void {
-  if (nodeInfoPanel) {
-    nodeInfoPanel.style.display = 'none';
-  }
-}
-
-/**
  * Updates the temporary edge line position.
  */
 function updateTempEdgeLine(startX: number, startY: number, endX: number, endY: number): void {
@@ -681,9 +686,10 @@ export function initInteractions(cyInstance: Core): void {
     hideOverlays();
   });
 
-  // Node free - allow overlays again after drag
+  // Node free - allow overlays again after drag and save positions
   cy.on('free', 'node', () => {
     isDraggingNode = false;
+    triggerChange();
   });
 
   // Mouse over node - show overlays
@@ -743,6 +749,7 @@ export function initInteractions(cyInstance: Core): void {
       hoveredElement.remove();
       hideOverlays();
       hoveredElement = null;
+      triggerChange();
     }
   });
 

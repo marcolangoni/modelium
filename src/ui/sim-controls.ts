@@ -37,14 +37,14 @@ const DEFAULT_CONFIG: SimConfig = {
   intervalMs: DEFAULT_INTERVAL_MS,
 };
 
-export function createSimController(getModel: () => ModeliumModel): SimController {
+export function createSimController(getModel: () => ModeliumModel, initialIntervalMs?: number): SimController {
   const worker = new Worker(
     new URL('../sim/worker.ts', import.meta.url),
     { type: 'module' }
   );
 
   let status: SimStatus = 'idle';
-  let currentIntervalMs = DEFAULT_INTERVAL_MS;
+  let currentIntervalMs = initialIntervalMs ?? DEFAULT_INTERVAL_MS;
   let currentBreakpoints: Breakpoint[] = [];
   const stateCallbacks: StateCallback[] = [];
   const statusCallbacks: StatusCallback[] = [];
