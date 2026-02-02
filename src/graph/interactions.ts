@@ -12,6 +12,7 @@ let editingEnabled = true;
 let trashOverlay: HTMLElement | null = null;
 let edgeHandleOverlay: HTMLElement | null = null;
 let edgeInfoPanel: HTMLElement | null = null;
+let nodeInfoPanel: HTMLElement | null = null;
 
 // Edge drawing state
 let isDrawingEdge = false;
@@ -20,6 +21,9 @@ let tempEdgeLine: HTMLElement | null = null;
 
 // Node dragging state
 let isDraggingNode = false;
+
+// Last known mouse position (page coordinates)
+let lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
 
 // ID counter for generating unique IDs
 let idCounter = 0;
@@ -98,6 +102,17 @@ function createTempEdgeLine(): HTMLElement {
 function createEdgeInfoPanel(): HTMLElement {
   const panel = document.createElement('div');
   panel.className = 'edge-info-panel';
+  panel.style.display = 'none';
+  document.body.appendChild(panel);
+  return panel;
+}
+
+/**
+ * Creates the node info panel element.
+ */
+function createNodeInfoPanel(): HTMLElement {
+  const panel = document.createElement('div');
+  panel.className = 'node-info-panel';
   panel.style.display = 'none';
   document.body.appendChild(panel);
   return panel;
@@ -224,31 +239,184 @@ function showNewEdgeModal(sourceId: string, targetId: string): void {
 
 /**
  * Positions the trash overlay near an element.
+ * For nodes: top-right (315 degrees / -45 degrees)
+ * For edges: uses perpendicular offset (opposite side from info panel)
  */
 function positionTrashOverlay(element: NodeSingular | EdgeSingular): void {
   if (!trashOverlay || !cy) return;
 
   const pos = getElementPagePosition(element);
   const zoom = cy.zoom();
-  const offset = element.isNode() ? 30 * zoom : 15;
 
-  trashOverlay.style.left = `${pos.x + offset}px`;
-  trashOverlay.style.top = `${pos.y - offset}px`;
+  if (element.isNode()) {
+    // Position at 315 degrees (top-right), -45 degrees in standard notation
+    const angle = -Math.PI / 4; // -45 degrees
+    const offset = 30 * zoom;
+    const x = pos.x + Math.cos(angle) * offset;
+    const y = pos.y + Math.sin(angle) * offset;
+    trashOverlay.style.left = `${x}px`;
+    trashOverlay.style.top = `${y}px`;
+  } else {
+    // For edges, position on opposite side from info panel (negative perpendicular)
+    const edge = element as EdgeSingular;
+    const perp = getEdgePerpendicular(edge);
+    const offset = 25;
+    const x = pos.x - perp.x * offset;
+    const y = pos.y - perp.y * offset;
+    trashOverlay.style.left = `${x}px`;
+    trashOverlay.style.top = `${y}px`;
+  }
   trashOverlay.style.display = 'flex';
 }
 
 /**
- * Positions the edge handle overlay on a node.
+ * Normalizes an angle to the range [-PI, PI].
  */
-function positionEdgeHandleOverlay(node: NodeSingular): void {
+function normalizeAngle(angle: number): number {
+  while (angle > Math.PI) angle -= 2 * Math.PI;
+  while (angle < -Math.PI) angle += 2 * Math.PI;
+  return angle;
+}
+
+/**
+ * Calculates the angular distance between two angles.
+ */
+function angularDistance(a: number, b: number): number {
+  return Math.abs(normalizeAngle(a - b));
+}
+
+/**
+ * Finds the midpoints of gaps between occupied angles.
+ * Returns an array of candidate angles where the edge handle can be placed.
+ */
+function findGapMidpoints(occupiedAngles: number[]): number[] {
+  if (occupiedAngles.length === 0) {
+    return [0]; // Default to right side
+  }
+
+  if (occupiedAngles.length === 1) {
+    // Single edge: return the opposite angle
+    return [normalizeAngle(occupiedAngles[0] + Math.PI)];
+  }
+
+  // Sort angles
+  const sorted = [...occupiedAngles].sort((a, b) => a - b);
+
+  const midpoints: number[] = [];
+
+  // Find gaps between consecutive angles
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const next = sorted[(i + 1) % sorted.length];
+
+    // Calculate gap, handling wrap-around
+    let gap: number;
+    if (i === sorted.length - 1) {
+      // Last to first (wrap around)
+      gap = (next + 2 * Math.PI) - current;
+    } else {
+      gap = next - current;
+    }
+
+    // Midpoint of the gap
+    const midpoint = normalizeAngle(current + gap / 2);
+    midpoints.push(midpoint);
+  }
+
+  return midpoints;
+}
+
+/**
+ * Finds the angle from candidates that is closest to the target angle.
+ */
+function findClosestAngle(candidates: number[], targetAngle: number): number {
+  if (candidates.length === 0) return 0;
+
+  let closest = candidates[0];
+  let minDistance = angularDistance(closest, targetAngle);
+
+  for (let i = 1; i < candidates.length; i++) {
+    const distance = angularDistance(candidates[i], targetAngle);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closest = candidates[i];
+    }
+  }
+
+  return closest;
+}
+
+/**
+ * Calculates the best angle for the edge handle based on connected edges and mouse position.
+ */
+function getEdgeHandleAngle(node: NodeSingular, mousePos: { x: number; y: number }): number {
+  if (!cy) return 0;
+
+  const nodePos = node.position();
+  const container = cy.container();
+  if (!container) return 0;
+
+  // Convert mouse position from page coordinates to model coordinates
+  const rect = container.getBoundingClientRect();
+  const pan = cy.pan();
+  const zoom = cy.zoom();
+  const mouseModelX = (mousePos.x - rect.left - pan.x) / zoom;
+  const mouseModelY = (mousePos.y - rect.top - pan.y) / zoom;
+
+  // Calculate mouse angle relative to node center
+  const mouseAngle = Math.atan2(mouseModelY - nodePos.y, mouseModelX - nodePos.x);
+
+  const connectedEdges = node.connectedEdges();
+
+  if (connectedEdges.length === 0) {
+    // No edges: place at mouse angle directly
+    return mouseAngle;
+  }
+
+  // Calculate angles where edges connect
+  const occupiedAngles: number[] = [];
+  connectedEdges.forEach((edge) => {
+    const otherNode = edge.source().id() === node.id() ? edge.target() : edge.source();
+
+    // Skip self-loops or overlapping nodes
+    if (otherNode.id() === node.id()) return;
+    const otherPos = otherNode.position();
+    if (otherPos.x === nodePos.x && otherPos.y === nodePos.y) return;
+
+    const angle = Math.atan2(otherPos.y - nodePos.y, otherPos.x - nodePos.x);
+    occupiedAngles.push(angle);
+  });
+
+  if (occupiedAngles.length === 0) {
+    // All edges were self-loops or overlapping
+    return mouseAngle;
+  }
+
+  // Find candidate angles (midpoints of gaps)
+  const candidateAngles = findGapMidpoints(occupiedAngles);
+
+  // Return the candidate angle closest to the mouse angle
+  return findClosestAngle(candidateAngles, mouseAngle);
+}
+
+/**
+ * Positions the edge handle overlay on a node based on mouse position.
+ */
+function positionEdgeHandleOverlay(node: NodeSingular, mousePos: { x: number; y: number }): void {
   if (!edgeHandleOverlay || !cy) return;
 
   const pos = getElementPagePosition(node);
   const zoom = cy.zoom();
   const offset = 30 * zoom;
 
-  edgeHandleOverlay.style.left = `${pos.x + offset}px`;
-  edgeHandleOverlay.style.top = `${pos.y}px`;
+  // Calculate the best angle for the edge handle
+  const angle = getEdgeHandleAngle(node, mousePos);
+
+  const x = pos.x + Math.cos(angle) * offset;
+  const y = pos.y + Math.sin(angle) * offset;
+
+  edgeHandleOverlay.style.left = `${x}px`;
+  edgeHandleOverlay.style.top = `${y}px`;
   edgeHandleOverlay.style.display = 'block';
 }
 
@@ -265,10 +433,35 @@ function hideOverlays(): void {
   if (edgeInfoPanel) {
     edgeInfoPanel.style.display = 'none';
   }
+  if (nodeInfoPanel) {
+    nodeInfoPanel.style.display = 'none';
+  }
+}
+
+/**
+ * Calculates the perpendicular offset direction for an edge.
+ * Returns a unit vector perpendicular to the edge direction.
+ */
+function getEdgePerpendicular(edge: EdgeSingular): { x: number; y: number } {
+  const sourcePos = edge.source().position();
+  const targetPos = edge.target().position();
+
+  const dx = targetPos.x - sourcePos.x;
+  const dy = targetPos.y - sourcePos.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+
+  if (length === 0) {
+    // Fallback if source and target are at same position
+    return { x: 0, y: -1 };
+  }
+
+  // Perpendicular vector (rotated 90 degrees counter-clockwise)
+  return { x: -dy / length, y: dx / length };
 }
 
 /**
  * Positions and updates the edge info panel near an edge.
+ * Uses perpendicular offset to avoid overlapping with trash.
  */
 function positionEdgeInfoPanel(edge: EdgeSingular): void {
   if (!edgeInfoPanel || !cy) return;
@@ -288,9 +481,14 @@ function positionEdgeInfoPanel(edge: EdgeSingular): void {
     <div class="edge-info-row"><span class="edge-info-label">Polarity:</span> ${polarity}</div>
   `;
 
-  // Position to the right of the edge midpoint
-  edgeInfoPanel.style.left = `${pos.x + 20}px`;
-  edgeInfoPanel.style.top = `${pos.y}px`;
+  // Position perpendicular to edge, on one side (positive perpendicular)
+  const perp = getEdgePerpendicular(edge);
+  const offset = 25;
+  const x = pos.x + perp.x * offset;
+  const y = pos.y + perp.y * offset;
+
+  edgeInfoPanel.style.left = `${x}px`;
+  edgeInfoPanel.style.top = `${y}px`;
   edgeInfoPanel.style.display = 'block';
 }
 
@@ -300,6 +498,52 @@ function positionEdgeInfoPanel(edge: EdgeSingular): void {
 function hideEdgeInfoPanel(): void {
   if (edgeInfoPanel) {
     edgeInfoPanel.style.display = 'none';
+  }
+}
+
+/**
+ * Positions and updates the node info panel on the left side of a node.
+ */
+function positionNodeInfoPanel(node: NodeSingular): void {
+  if (!nodeInfoPanel || !cy) return;
+
+  const pos = getElementPagePosition(node);
+  const zoom = cy.zoom();
+  const offset = 30 * zoom;
+
+  const label = node.data('label') || node.id();
+  const value = node.data('value') ?? 0;
+  const min = node.data('min');
+  const max = node.data('max');
+
+  let html = `
+    <div class="node-info-row"><span class="node-info-label">Label:</span> ${label}</div>
+    <div class="node-info-row"><span class="node-info-label">Value:</span> ${value}</div>
+  `;
+  if (min !== undefined && min !== '') {
+    html += `<div class="node-info-row"><span class="node-info-label">Min:</span> ${min}</div>`;
+  }
+  if (max !== undefined && max !== '') {
+    html += `<div class="node-info-row"><span class="node-info-label">Max:</span> ${max}</div>`;
+  }
+
+  nodeInfoPanel.innerHTML = html;
+
+  // Position on the left side of the node (180 degrees)
+  const angle = Math.PI; // 180 degrees
+  const x = pos.x + Math.cos(angle) * offset;
+  const y = pos.y + Math.sin(angle) * offset;
+  nodeInfoPanel.style.left = `${x}px`;
+  nodeInfoPanel.style.top = `${y}px`;
+  nodeInfoPanel.style.display = 'block';
+}
+
+/**
+ * Hides the node info panel.
+ */
+function hideNodeInfoPanel(): void {
+  if (nodeInfoPanel) {
+    nodeInfoPanel.style.display = 'none';
   }
 }
 
@@ -341,6 +585,7 @@ export function initInteractions(cyInstance: Core): void {
   edgeHandleOverlay = createEdgeHandleOverlay();
   tempEdgeLine = createTempEdgeLine();
   edgeInfoPanel = createEdgeInfoPanel();
+  nodeInfoPanel = createNodeInfoPanel();
 
   let hoveredElement: NodeSingular | EdgeSingular | null = null;
   let hideTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -380,14 +625,24 @@ export function initInteractions(cyInstance: Core): void {
 
   // Mouse over node - show overlays
   cy.on('mouseover', 'node', (event) => {
-    if (!editingEnabled || isDrawingEdge || isDraggingNode) return;
+    if (isDrawingEdge || isDraggingNode) return;
     if (hideTimeout) {
       clearTimeout(hideTimeout);
       hideTimeout = null;
     }
     hoveredElement = event.target as NodeSingular;
-    positionTrashOverlay(hoveredElement);
-    positionEdgeHandleOverlay(hoveredElement);
+
+    // Capture mouse position from the original event
+    const originalEvent = event.originalEvent as MouseEvent;
+    lastMousePos = { x: originalEvent.clientX, y: originalEvent.clientY };
+
+    // Always show node info panel (regardless of editing state)
+    positionNodeInfoPanel(hoveredElement);
+    // Only show editing overlays if editing is enabled
+    if (editingEnabled) {
+      positionTrashOverlay(hoveredElement);
+      positionEdgeHandleOverlay(hoveredElement, lastMousePos);
+    }
   });
 
   // Mouse over edge - show trash overlay and info panel
@@ -510,9 +765,17 @@ export function initInteractions(cyInstance: Core): void {
   // Update overlay positions on pan/zoom
   cy.on('pan zoom', () => {
     if (hoveredElement && !isDrawingEdge && !isDraggingNode) {
-      positionTrashOverlay(hoveredElement);
       if (hoveredElement.isNode()) {
-        positionEdgeHandleOverlay(hoveredElement as NodeSingular);
+        positionNodeInfoPanel(hoveredElement as NodeSingular);
+        if (editingEnabled) {
+          positionTrashOverlay(hoveredElement);
+          positionEdgeHandleOverlay(hoveredElement as NodeSingular, lastMousePos);
+        }
+      } else {
+        positionEdgeInfoPanel(hoveredElement as EdgeSingular);
+        if (editingEnabled) {
+          positionTrashOverlay(hoveredElement);
+        }
       }
     }
   });
