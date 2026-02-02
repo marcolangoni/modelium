@@ -2,6 +2,15 @@
  * Reusable modal dialog for editing node/edge properties.
  */
 
+/**
+ * Condition for field visibility.
+ * Field is visible when the specified field has the specified value.
+ */
+export interface VisibilityCondition {
+  field: string;
+  value: string | string[];  // Value or array of values that make this field visible
+}
+
 export interface ModalField {
   key: string;
   label: string;
@@ -9,6 +18,7 @@ export interface ModalField {
   value: string | number;
   options?: Array<{ value: string; label: string }>;
   required?: boolean;
+  visibleWhen?: VisibilityCondition;  // Conditional visibility
 }
 
 export interface ModalConfig {
@@ -20,6 +30,44 @@ export interface ModalConfig {
 }
 
 let currentOverlay: HTMLElement | null = null;
+
+/**
+ * Checks if a field should be visible based on its visibility condition.
+ */
+function isFieldVisible(
+  condition: VisibilityCondition | undefined,
+  fieldElements: Map<string, HTMLInputElement | HTMLSelectElement>
+): boolean {
+  if (!condition) return true;
+
+  const controlElement = fieldElements.get(condition.field);
+  if (!controlElement) return true;
+
+  const currentValue = controlElement.value;
+  if (Array.isArray(condition.value)) {
+    return condition.value.includes(currentValue);
+  }
+  return currentValue === condition.value;
+}
+
+/**
+ * Updates visibility of all conditional fields.
+ */
+function updateFieldVisibility(
+  fields: ModalField[],
+  fieldElements: Map<string, HTMLInputElement | HTMLSelectElement>,
+  fieldDivs: Map<string, HTMLElement>
+): void {
+  for (const field of fields) {
+    if (field.visibleWhen) {
+      const fieldDiv = fieldDivs.get(field.key);
+      if (fieldDiv) {
+        const visible = isFieldVisible(field.visibleWhen, fieldElements);
+        fieldDiv.style.display = visible ? 'block' : 'none';
+      }
+    }
+  }
+}
 
 /**
  * Shows a modal dialog with the given configuration.
@@ -43,10 +91,12 @@ export function showModal(config: ModalConfig): void {
 
   // Fields
   const fieldElements: Map<string, HTMLInputElement | HTMLSelectElement> = new Map();
+  const fieldDivs: Map<string, HTMLElement> = new Map();
 
   for (const field of config.fields) {
     const fieldDiv = document.createElement('div');
     fieldDiv.className = 'modal-field';
+    fieldDivs.set(field.key, fieldDiv);
 
     const label = document.createElement('label');
     label.textContent = field.label + (field.required ? ' *' : '');
@@ -85,6 +135,26 @@ export function showModal(config: ModalConfig): void {
     modal.appendChild(fieldDiv);
   }
 
+  // Set up visibility change listeners
+  const fieldsWithDependents = new Set<string>();
+  for (const field of config.fields) {
+    if (field.visibleWhen) {
+      fieldsWithDependents.add(field.visibleWhen.field);
+    }
+  }
+
+  for (const fieldKey of fieldsWithDependents) {
+    const element = fieldElements.get(fieldKey);
+    if (element) {
+      element.addEventListener('change', () => {
+        updateFieldVisibility(config.fields, fieldElements, fieldDivs);
+      });
+    }
+  }
+
+  // Initial visibility update
+  updateFieldVisibility(config.fields, fieldElements, fieldDivs);
+
   // Actions
   const actions = document.createElement('div');
   actions.className = 'modal-actions';
@@ -116,9 +186,9 @@ export function showModal(config: ModalConfig): void {
   saveBtn.className = 'save';
   saveBtn.textContent = 'Save';
   saveBtn.onclick = () => {
-    // Validate required fields
+    // Validate required fields (only visible ones)
     for (const field of config.fields) {
-      if (field.required) {
+      if (field.required && isFieldVisible(field.visibleWhen, fieldElements)) {
         const el = fieldElements.get(field.key);
         if (el && !el.value.trim()) {
           el.focus();
@@ -127,20 +197,26 @@ export function showModal(config: ModalConfig): void {
       }
     }
 
-    // Collect values
+    // Collect values (only from visible fields)
     const values: Record<string, string | number | undefined> = {};
     for (const field of config.fields) {
       const el = fieldElements.get(field.key);
       if (el) {
-        const rawValue = el.value.trim();
-        if (field.type === 'number') {
-          if (rawValue === '') {
-            values[field.key] = undefined;
+        // Only include value if field is visible
+        if (isFieldVisible(field.visibleWhen, fieldElements)) {
+          const rawValue = el.value.trim();
+          if (field.type === 'number') {
+            if (rawValue === '') {
+              values[field.key] = undefined;
+            } else {
+              values[field.key] = parseFloat(rawValue);
+            }
           } else {
-            values[field.key] = parseFloat(rawValue);
+            values[field.key] = rawValue;
           }
         } else {
-          values[field.key] = rawValue;
+          // Hidden fields get undefined value
+          values[field.key] = undefined;
         }
       }
     }
@@ -155,12 +231,17 @@ export function showModal(config: ModalConfig): void {
   document.body.appendChild(overlay);
   currentOverlay = overlay;
 
-  // Focus first input
-  const firstInput = fieldElements.values().next().value;
-  if (firstInput) {
-    firstInput.focus();
-    if (firstInput instanceof HTMLInputElement) {
-      firstInput.select();
+  // Focus first visible input
+  for (const field of config.fields) {
+    if (isFieldVisible(field.visibleWhen, fieldElements)) {
+      const firstInput = fieldElements.get(field.key);
+      if (firstInput) {
+        firstInput.focus();
+        if (firstInput instanceof HTMLInputElement) {
+          firstInput.select();
+        }
+        break;
+      }
     }
   }
 

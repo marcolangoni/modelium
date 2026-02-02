@@ -2,12 +2,21 @@
  * Modelium JSON Schema v1
  */
 
+export type NodeType = 'regular' | 'event';
+export type EventType = 'random' | 'fixed';
+
 export interface ModeliumNode {
   id: string;
   label: string;
   value: number;
   min?: number;
   max?: number;
+  // Event node fields
+  nodeType?: NodeType;      // 'regular' (default) or 'event'
+  eventType?: EventType;    // 'random' or 'fixed' (only if nodeType === 'event')
+  intervalMin?: number;     // For random events: min steps between triggers
+  intervalMax?: number;     // For random events: max steps between triggers
+  interval?: number;        // For fixed events: trigger every N steps
 }
 
 export interface ModeliumEdge {
@@ -88,6 +97,49 @@ export function validateModel(json: unknown): ValidationResult {
       (node['min'] as number) > (node['max'] as number)
     ) {
       return { valid: false, error: `Node at index ${i} has min > max` };
+    }
+
+    // Validate optional nodeType
+    if (node['nodeType'] !== undefined) {
+      if (node['nodeType'] !== 'regular' && node['nodeType'] !== 'event') {
+        return { valid: false, error: `Node at index ${i} has invalid "nodeType" (expected "regular" or "event")` };
+      }
+    }
+
+    // Validate event-specific fields
+    if (node['nodeType'] === 'event') {
+      if (node['eventType'] !== 'random' && node['eventType'] !== 'fixed') {
+        return { valid: false, error: `Node at index ${i} has invalid "eventType" (expected "random" or "fixed")` };
+      }
+
+      if (node['eventType'] === 'random') {
+        // Random events require intervalMin and intervalMax
+        if (node['intervalMin'] !== undefined) {
+          if (typeof node['intervalMin'] !== 'number' || !Number.isFinite(node['intervalMin']) || node['intervalMin'] < 1) {
+            return { valid: false, error: `Node at index ${i} has invalid "intervalMin" (must be a positive number)` };
+          }
+        }
+        if (node['intervalMax'] !== undefined) {
+          if (typeof node['intervalMax'] !== 'number' || !Number.isFinite(node['intervalMax']) || node['intervalMax'] < 1) {
+            return { valid: false, error: `Node at index ${i} has invalid "intervalMax" (must be a positive number)` };
+          }
+        }
+        // Validate intervalMin <= intervalMax if both present
+        if (
+          node['intervalMin'] !== undefined &&
+          node['intervalMax'] !== undefined &&
+          (node['intervalMin'] as number) > (node['intervalMax'] as number)
+        ) {
+          return { valid: false, error: `Node at index ${i} has intervalMin > intervalMax` };
+        }
+      } else if (node['eventType'] === 'fixed') {
+        // Fixed events require interval
+        if (node['interval'] !== undefined) {
+          if (typeof node['interval'] !== 'number' || !Number.isFinite(node['interval']) || node['interval'] < 1) {
+            return { valid: false, error: `Node at index ${i} has invalid "interval" (must be a positive number)` };
+          }
+        }
+      }
     }
   }
 

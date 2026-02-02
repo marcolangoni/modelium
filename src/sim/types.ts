@@ -51,6 +51,7 @@ export type SimMessage =
 export interface SimStateSnapshot {
   step: number;
   values: Record<string, number>;
+  triggeredEvents?: string[];  // IDs of events that triggered this step
 }
 
 /**
