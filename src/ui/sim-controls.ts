@@ -13,6 +13,7 @@ type StatusCallback = (status: SimStatus, breach?: BreachInfo) => void;
 type BreakpointHitCallback = (hit: BreakpointHit) => void;
 
 export interface SimController {
+  init(): void;
   start(): void;
   pause(): void;
   resume(): void;
@@ -112,6 +113,22 @@ export function createSimController(getModel: () => ModeliumModel): SimControlle
   };
 
   return {
+    init(): void {
+      const model = getModel();
+      const config: SimConfig = {
+        ...DEFAULT_CONFIG,
+        intervalMs: currentIntervalMs,
+      };
+      postMessage({ type: 'init', model, config });
+      // Send breakpoints after init
+      if (currentBreakpoints.length > 0) {
+        setTimeout(() => {
+          postMessage({ type: 'updateBreakpoints', breakpoints: currentBreakpoints });
+        }, 5);
+      }
+      setStatus('paused');
+    },
+
     start(): void {
       const model = getModel();
       const config: SimConfig = {

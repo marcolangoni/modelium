@@ -115,9 +115,12 @@ export function initToolbar(container: HTMLElement): void {
     if (!simController) {
       simController = createSimController(getModel);
       setupSimCallbacks(simController, playBtn, pauseBtn, resetBtn, statusSpan);
-      // Initialize but don't run
-      simController.start();
-      simController.pause();
+      // Initialize only, don't start running
+      simController.init();
+      // Send breakpoints to the controller
+      if (breakpointManager) {
+        simController.setBreakpoints(breakpointManager.getAll());
+      }
     }
     clearBreakpointHitHighlight();
     simController.step();
@@ -297,7 +300,7 @@ function updateButtonStates(
       playBtn.textContent = 'Play';
       playBtn.style.display = '';
       pauseBtn.style.display = 'none';
-      if (stepBtn) stepBtn.style.display = 'none';
+      if (stepBtn) stepBtn.style.display = '';
       resetBtn.disabled = true;
       statusSpan.textContent = '';
       enableEditing();

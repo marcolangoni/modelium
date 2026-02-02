@@ -167,8 +167,11 @@ self.onmessage = (event: MessageEvent<SimMessage>) => {
       }
       // Clear breach flag to allow stepping
       state = { ...state, breached: null };
-      runStep();
-      postResult({ type: 'stepped', snapshot: { step: state.step, values: { ...state.values } } });
+      // Only send 'stepped' if runStep() didn't hit a breakpoint or breach
+      const stepSucceeded = runStep();
+      if (stepSucceeded) {
+        postResult({ type: 'stepped', snapshot: { step: state.step, values: { ...state.values } } });
+      }
       break;
 
     case 'setSpeed':
