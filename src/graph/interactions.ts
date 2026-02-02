@@ -11,11 +11,15 @@ let editingEnabled = true;
 // Overlay elements
 let trashOverlay: HTMLElement | null = null;
 let edgeHandleOverlay: HTMLElement | null = null;
+let edgeInfoPanel: HTMLElement | null = null;
 
 // Edge drawing state
 let isDrawingEdge = false;
 let edgeSourceNode: NodeSingular | null = null;
 let tempEdgeLine: HTMLElement | null = null;
+
+// Node dragging state
+let isDraggingNode = false;
 
 // ID counter for generating unique IDs
 let idCounter = 0;
@@ -86,6 +90,17 @@ function createTempEdgeLine(): HTMLElement {
   line.style.display = 'none';
   document.body.appendChild(line);
   return line;
+}
+
+/**
+ * Creates the edge info panel element.
+ */
+function createEdgeInfoPanel(): HTMLElement {
+  const panel = document.createElement('div');
+  panel.className = 'edge-info-panel';
+  panel.style.display = 'none';
+  document.body.appendChild(panel);
+  return panel;
 }
 
 /**
@@ -247,6 +262,45 @@ function hideOverlays(): void {
   if (edgeHandleOverlay) {
     edgeHandleOverlay.style.display = 'none';
   }
+  if (edgeInfoPanel) {
+    edgeInfoPanel.style.display = 'none';
+  }
+}
+
+/**
+ * Positions and updates the edge info panel near an edge.
+ */
+function positionEdgeInfoPanel(edge: EdgeSingular): void {
+  if (!edgeInfoPanel || !cy) return;
+
+  const pos = getElementPagePosition(edge);
+  const sourceNode = edge.source();
+  const targetNode = edge.target();
+  const sourceLabel = sourceNode.data('label') || sourceNode.id();
+  const targetLabel = targetNode.data('label') || targetNode.id();
+  const weight = edge.data('weight') ?? 1;
+  const polarity = edge.data('polarity') || '+';
+
+  edgeInfoPanel.innerHTML = `
+    <div class="edge-info-row"><span class="edge-info-label">From:</span> ${sourceLabel}</div>
+    <div class="edge-info-row"><span class="edge-info-label">To:</span> ${targetLabel}</div>
+    <div class="edge-info-row"><span class="edge-info-label">Weight:</span> ${weight}</div>
+    <div class="edge-info-row"><span class="edge-info-label">Polarity:</span> ${polarity}</div>
+  `;
+
+  // Position to the right of the edge midpoint
+  edgeInfoPanel.style.left = `${pos.x + 20}px`;
+  edgeInfoPanel.style.top = `${pos.y}px`;
+  edgeInfoPanel.style.display = 'block';
+}
+
+/**
+ * Hides the edge info panel.
+ */
+function hideEdgeInfoPanel(): void {
+  if (edgeInfoPanel) {
+    edgeInfoPanel.style.display = 'none';
+  }
 }
 
 /**
@@ -286,6 +340,7 @@ export function initInteractions(cyInstance: Core): void {
   trashOverlay = createTrashOverlay();
   edgeHandleOverlay = createEdgeHandleOverlay();
   tempEdgeLine = createTempEdgeLine();
+  edgeInfoPanel = createEdgeInfoPanel();
 
   let hoveredElement: NodeSingular | EdgeSingular | null = null;
   let hideTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -312,9 +367,20 @@ export function initInteractions(cyInstance: Core): void {
     showEdgeEditModal(event.target as EdgeSingular);
   });
 
+  // Node grab - hide overlays during drag
+  cy.on('grab', 'node', () => {
+    isDraggingNode = true;
+    hideOverlays();
+  });
+
+  // Node free - allow overlays again after drag
+  cy.on('free', 'node', () => {
+    isDraggingNode = false;
+  });
+
   // Mouse over node - show overlays
   cy.on('mouseover', 'node', (event) => {
-    if (!editingEnabled || isDrawingEdge) return;
+    if (!editingEnabled || isDrawingEdge || isDraggingNode) return;
     if (hideTimeout) {
       clearTimeout(hideTimeout);
       hideTimeout = null;
@@ -324,15 +390,20 @@ export function initInteractions(cyInstance: Core): void {
     positionEdgeHandleOverlay(hoveredElement);
   });
 
-  // Mouse over edge - show trash overlay
+  // Mouse over edge - show trash overlay and info panel
   cy.on('mouseover', 'edge', (event) => {
-    if (!editingEnabled || isDrawingEdge) return;
+    if (isDrawingEdge || isDraggingNode) return;
     if (hideTimeout) {
       clearTimeout(hideTimeout);
       hideTimeout = null;
     }
     hoveredElement = event.target as EdgeSingular;
-    positionTrashOverlay(hoveredElement);
+    // Always show edge info panel on hover (regardless of editing state)
+    positionEdgeInfoPanel(hoveredElement);
+    // Only show trash overlay if editing is enabled
+    if (editingEnabled) {
+      positionTrashOverlay(hoveredElement);
+    }
     if (edgeHandleOverlay) {
       edgeHandleOverlay.style.display = 'none';
     }
@@ -340,7 +411,7 @@ export function initInteractions(cyInstance: Core): void {
 
   // Mouse out - hide overlays with delay
   cy.on('mouseout', 'node, edge', () => {
-    if (isDrawingEdge) return;
+    if (isDrawingEdge || isDraggingNode) return;
     hideTimeout = setTimeout(() => {
       hideOverlays();
       hoveredElement = null;
@@ -438,7 +509,7 @@ export function initInteractions(cyInstance: Core): void {
 
   // Update overlay positions on pan/zoom
   cy.on('pan zoom', () => {
-    if (hoveredElement && !isDrawingEdge) {
+    if (hoveredElement && !isDrawingEdge && !isDraggingNode) {
       positionTrashOverlay(hoveredElement);
       if (hoveredElement.isNode()) {
         positionEdgeHandleOverlay(hoveredElement as NodeSingular);
