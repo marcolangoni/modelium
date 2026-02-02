@@ -195,7 +195,7 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
           'border-width': 2,
           'border-color': '#2a7edf',
           'background-fit': 'contain',
-          'background-clip': 'none',
+          'background-clip': 'node',
           'background-width': '80%',
           'background-height': '40%',
           'background-position-y': '75%',
@@ -245,6 +245,23 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
         style: {
           'background-color': '#ef4444',
           'border-color': '#dc2626',
+        },
+      },
+      {
+        selector: 'node.hasBreakpoint',
+        style: {
+          'border-color': '#f59e0b',
+          'border-width': 4,
+          'border-opacity': 0.8,
+        } as cytoscape.Css.Node,
+      },
+      {
+        selector: 'node.breakpointHit',
+        style: {
+          'border-color': '#f59e0b',
+          'border-width': 4,
+          'border-style': 'solid',
+          'background-color': '#fbbf24',
         },
       },
     ],
@@ -356,4 +373,60 @@ export function clearNodeHistory(): void {
     node.data('history', []);
     node.style('background-image', 'none');
   });
+}
+
+/**
+ * Marks a node as having a breakpoint (visual indicator).
+ */
+export function setNodeBreakpoint(nodeId: string): void {
+  if (!cy) return;
+
+  const node = cy.getElementById(nodeId);
+  if (node.length > 0) {
+    node.addClass('hasBreakpoint');
+  }
+}
+
+/**
+ * Removes breakpoint visual indicator from a node.
+ */
+export function clearNodeBreakpoint(nodeId: string): void {
+  if (!cy) return;
+
+  const node = cy.getElementById(nodeId);
+  if (node.length > 0) {
+    node.removeClass('hasBreakpoint');
+    node.removeClass('breakpointHit');
+  }
+}
+
+/**
+ * Removes all breakpoint visual indicators from all nodes.
+ */
+export function clearAllNodeBreakpoints(): void {
+  if (!cy) return;
+
+  cy.nodes().removeClass('hasBreakpoint');
+  cy.nodes().removeClass('breakpointHit');
+}
+
+/**
+ * Highlights a node as having hit its breakpoint.
+ */
+export function highlightBreakpointHit(nodeId: string): void {
+  if (!cy) return;
+
+  const node = cy.getElementById(nodeId);
+  if (node.length > 0) {
+    node.addClass('breakpointHit');
+  }
+}
+
+/**
+ * Clears the breakpoint hit highlight from all nodes.
+ */
+export function clearBreakpointHitHighlight(): void {
+  if (!cy) return;
+
+  cy.nodes().removeClass('breakpointHit');
 }

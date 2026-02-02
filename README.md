@@ -48,6 +48,24 @@ Open http://localhost:5173 in your browser.
 - Simulation **auto-pauses** on constraint breach
 - Click **Resume** to continue or **Reset** to start over
 
+### Debug Controls
+
+| Feature | How |
+|---------|-----|
+| Speed control | Use `[` `-` to slow down, `]` `+` to speed up |
+| Pause/Resume | Press `Space` or click toolbar buttons |
+| Step-by-step | Press `S` or `N` when paused, or click **Step** button |
+| Add breakpoint | Right-click node → Add Breakpoint |
+| Remove breakpoint | Right-click node → Remove Breakpoint |
+| Clear all breakpoints | Click **Clear Breakpoints** in toolbar |
+
+### Breakpoints
+
+- Set breakpoints on nodes to pause when values reach specific conditions
+- Conditions: `>=`, `<=`, `>`, `<`, `=`
+- Nodes with breakpoints show an **orange border**
+- Simulation pauses automatically when a breakpoint condition is met
+
 ### Edge Inspection
 
 - **Hover over any edge** to see its properties panel (source, target, weight, polarity)
@@ -88,6 +106,9 @@ modelium/
       modal.ts            # Edit modals
       file-io.ts          # Import/export helpers
       sim-controls.ts     # Simulation controller
+      breakpoints.ts      # Breakpoint manager
+      keyboard.ts         # Keyboard shortcuts
+      context-menu.ts     # Right-click menus
   index.html
   vite.config.ts
   tsconfig.json
@@ -158,10 +179,12 @@ See [USER_MANUAL.md](USER_MANUAL.md) for detailed usage instructions.
 
 ## Roadmap
 
+- [x] Keyboard shortcuts for simulation control
+- [x] Breakpoints for debugging
 - [ ] Per-node activation functions (linear, sigmoid, clamp)
 - [ ] Scenario runner (batch multiple runs)
 - [ ] Export reports: JSON + CSV
-- [ ] Keyboard shortcuts for editing
+- [ ] Keyboard shortcuts for editing (copy, paste, delete)
 - [ ] Undo/redo support
 - [ ] Deterministic seeded runs
 
