@@ -1,4 +1,5 @@
-import { getModel, loadModel, updateNodeValues, highlightBreached, resetHighlights } from '../graph/cytoscape.ts';
+import { getModel, loadModel, updateNodeValues, highlightBreached, resetHighlights, appendNodeHistory, clearNodeHistory } from '../graph/cytoscape.ts';
+import { disableEditing, enableEditing } from '../graph/interactions.ts';
 import { downloadJson, uploadJson } from './file-io.ts';
 import { createSimController, type SimController, type SimStatus } from './sim-controls.ts';
 
@@ -52,6 +53,7 @@ export function initToolbar(container: HTMLElement): void {
       simController.resume();
     } else {
       resetHighlights();
+      clearNodeHistory();
       simController.start();
     }
   };
@@ -72,6 +74,7 @@ export function initToolbar(container: HTMLElement): void {
     if (simController) {
       simController.reset();
       resetHighlights();
+      clearNodeHistory();
       // Reload the original model to restore initial values
       loadModel(getModel());
     }
@@ -99,6 +102,7 @@ function setupSimCallbacks(
 ): void {
   controller.onStateChange((snapshot) => {
     updateNodeValues(snapshot.values);
+    appendNodeHistory(snapshot.values);
   });
 
   controller.onStatusChange((status, breach) => {
@@ -124,6 +128,7 @@ function updateButtonStates(
       pauseBtn.style.display = 'none';
       resetBtn.disabled = true;
       statusSpan.textContent = '';
+      enableEditing();
       break;
 
     case 'running':
@@ -132,6 +137,7 @@ function updateButtonStates(
       resetBtn.disabled = false;
       statusSpan.textContent = 'Running...';
       statusSpan.className = 'status running';
+      disableEditing();
       break;
 
     case 'paused':
@@ -146,6 +152,7 @@ function updateButtonStates(
         statusSpan.textContent = 'Paused';
       }
       statusSpan.className = 'status paused';
+      disableEditing();
       break;
 
     case 'done':
@@ -155,6 +162,7 @@ function updateButtonStates(
       resetBtn.disabled = false;
       statusSpan.textContent = 'Done';
       statusSpan.className = 'status';
+      enableEditing();
       break;
   }
 }

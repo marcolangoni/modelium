@@ -1,8 +1,8 @@
 import type { ModeliumModel } from './schema.ts';
 
 /**
- * Default seed model with 2 nodes and 1 directed edge.
- * Used to initialize the graph on first load.
+ * Default seed model with 3 nodes and 2 directed edges.
+ * Demonstrates a simple causal chain with constraints.
  */
 export const seedModel: ModeliumModel = {
   version: 1,
@@ -11,10 +11,12 @@ export const seedModel: ModeliumModel = {
     createdAt: new Date().toISOString(),
   },
   nodes: [
-    { id: 'A', label: 'Cause', value: 10 },
-    { id: 'B', label: 'Effect', value: 0, max: 50 },
+    { id: 'A', label: 'Input', value: 10 },
+    { id: 'B', label: 'Buffer', value: 0, min: -20, max: 50 },
+    { id: 'C', label: 'Output', value: 5, max: 100 },
   ],
   edges: [
     { id: 'e1', from: 'A', to: 'B', weight: 0.5, polarity: '+' },
+    { id: 'e2', from: 'B', to: 'C', weight: 0.3, polarity: '+' },
   ],
 };

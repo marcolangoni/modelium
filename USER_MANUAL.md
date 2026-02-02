@@ -1,0 +1,353 @@
+# Modelium User Manual
+
+Modelium is a lightweight System Dynamics playground for building causal graphs and running step-based simulations.
+
+---
+
+## Table of Contents
+
+1. [Getting Started](#getting-started)
+2. [Interface Overview](#interface-overview)
+3. [Working with Nodes](#working-with-nodes)
+4. [Working with Edges](#working-with-edges)
+5. [Running Simulations](#running-simulations)
+6. [Import and Export](#import-and-export)
+7. [Understanding the Model](#understanding-the-model)
+8. [Keyboard Shortcuts](#keyboard-shortcuts)
+9. [Troubleshooting](#troubleshooting)
+
+---
+
+## Getting Started
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/marcolangoni/modelium.git
+cd modelium
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+```
+
+Open your browser and navigate to `http://localhost:5173/`.
+
+### First Steps
+
+When you launch Modelium, you'll see a demo model with three nodes connected by edges. This is a simple causal chain demonstrating how values flow through the system.
+
+---
+
+## Interface Overview
+
+### Toolbar
+
+The toolbar at the top of the screen contains:
+
+| Button | Description |
+|--------|-------------|
+| **Export JSON** | Download the current model as a JSON file |
+| **Import JSON** | Load a model from a JSON file |
+| **Play** | Start the simulation |
+| **Pause** | Pause a running simulation |
+| **Resume** | Continue a paused simulation |
+| **Reset** | Stop simulation and restore initial values |
+
+The status indicator on the right shows the current simulation state.
+
+### Canvas
+
+The main area displays your causal graph. You can:
+- **Pan**: Click and drag on empty space
+- **Zoom**: Use mouse wheel or pinch gesture
+- **Select**: Click on a node or edge
+
+---
+
+## Working with Nodes
+
+Nodes represent variables in your system. Each node has:
+- **Label**: A descriptive name
+- **Value**: The current numeric value
+- **Min** (optional): Minimum allowed value
+- **Max** (optional): Maximum allowed value
+
+### Adding a Node
+
+1. **Double-click** on empty canvas space
+2. Fill in the node properties in the modal:
+   - **Label**: Enter a name (required)
+   - **Value**: Enter the initial value (required)
+   - **Min**: Optional lower bound
+   - **Max**: Optional upper bound
+3. Click **Save**
+
+### Editing a Node
+
+1. **Double-click** on the node you want to edit
+2. Modify the properties in the modal
+3. Click **Save** to apply changes
+
+### Deleting a Node
+
+1. **Hover** your mouse over the node
+2. A red **×** button appears near the node
+3. **Click** the × button to delete the node
+
+> Note: Deleting a node also removes all edges connected to it.
+
+### Moving a Node
+
+Simply **click and drag** the node to reposition it on the canvas.
+
+---
+
+## Working with Edges
+
+Edges represent causal relationships between nodes. Each edge has:
+- **Weight**: The strength of the influence (multiplier)
+- **Polarity**: Direction of influence (+ or -)
+
+### Understanding Polarity
+
+| Polarity | Meaning | Visual |
+|----------|---------|--------|
+| **+** (positive) | When source increases, target tends to increase | Green arrow |
+| **-** (negative) | When source increases, target tends to decrease | Red arrow |
+
+### Adding an Edge
+
+1. **Hover** over the source node
+2. A small **green circle** (edge handle) appears on the right side of the node
+3. **Click and drag** from the green handle toward the target node
+4. **Release** over the target node
+5. Fill in the edge properties:
+   - **Weight**: Influence strength (e.g., 0.5, 1.0, 2.0)
+   - **Polarity**: Select + or -
+6. Click **Save**
+
+### Editing an Edge
+
+1. **Double-click** on the edge
+2. Modify weight and/or polarity
+3. Click **Save**
+
+### Deleting an Edge
+
+1. **Hover** your mouse over the edge
+2. A red **×** button appears near the edge midpoint
+3. **Click** the × button to delete the edge
+
+---
+
+## Running Simulations
+
+The simulation computes how node values change over time based on their connections.
+
+### Simulation Formula
+
+For each time step, the simulation calculates:
+
+```
+new_value[node] = current_value[node] + dt × Σ(weight × source_value × polarity)
+```
+
+Where:
+- **dt** is the time step size (0.1 by default)
+- The sum is over all incoming edges to the node
+- **polarity** is +1 for positive edges, -1 for negative edges
+
+### Starting a Simulation
+
+1. Click **Play** in the toolbar
+2. Watch the node values change in real-time
+3. Sparklines appear inside each node showing value history
+
+### Pausing and Resuming
+
+- Click **Pause** to temporarily stop the simulation
+- Click **Resume** to continue from where you paused
+
+### Constraint Breaches
+
+If a node reaches its **min** or **max** value:
+1. The simulation **automatically pauses**
+2. The breached node turns **red**
+3. The status shows which node hit its limit
+4. Click **Resume** to continue (the value stays clamped at the limit)
+
+### Resetting
+
+Click **Reset** to:
+- Stop the simulation
+- Restore all nodes to their initial values
+- Clear sparkline history
+- Remove breach highlighting
+
+---
+
+## Import and Export
+
+### Exporting Your Model
+
+1. Click **Export JSON**
+2. A file named `modelium-export.json` downloads to your computer
+3. This file contains all nodes, edges, and their properties
+
+### Importing a Model
+
+1. Click **Import JSON**
+2. Select a Modelium JSON file from your computer
+3. The current model is replaced with the imported one
+
+> Warning: Importing replaces your current work. Export first if you want to save it.
+
+---
+
+## Understanding the Model
+
+### JSON Format
+
+Modelium models are stored as JSON with this structure:
+
+```json
+{
+  "version": 1,
+  "meta": {
+    "name": "My Model",
+    "createdAt": "2026-02-01T12:00:00Z"
+  },
+  "nodes": [
+    {
+      "id": "A",
+      "label": "Population",
+      "value": 1000,
+      "min": 0,
+      "max": 10000
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "A",
+      "to": "B",
+      "weight": 0.5,
+      "polarity": "+"
+    }
+  ]
+}
+```
+
+### Node Properties
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| id | string | Yes | Unique identifier |
+| label | string | Yes | Display name |
+| value | number | Yes | Current/initial value |
+| min | number | No | Minimum constraint |
+| max | number | No | Maximum constraint |
+
+### Edge Properties
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| id | string | Yes | Unique identifier |
+| from | string | Yes | Source node ID |
+| to | string | Yes | Target node ID |
+| weight | number | Yes | Influence multiplier |
+| polarity | "+" or "-" | Yes | Direction of influence |
+
+---
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| **Escape** | Close modal dialog |
+| **Enter** | Save modal (when in input field) |
+
+---
+
+## Troubleshooting
+
+### Nodes won't move
+
+- Make sure the simulation is **not running**
+- Editing is disabled during simulation
+
+### Can't add nodes or edges
+
+- Check if simulation is running (Pause or Reset first)
+- Editing is disabled while simulation is active
+
+### Simulation doesn't change values
+
+- Verify edges exist between nodes
+- Check that source nodes have non-zero values
+- Ensure edge weights are not zero
+
+### Import fails
+
+- Ensure the file is valid JSON
+- Check that it follows the Modelium schema
+- Version must be `1`
+- All required fields must be present
+
+### Sparklines don't appear
+
+- Sparklines only show after 2+ simulation steps
+- They appear inside the node as a small line chart
+- Reset clears sparkline history
+
+---
+
+## Tips and Best Practices
+
+1. **Start simple**: Begin with 2-3 nodes to understand the dynamics
+2. **Use constraints**: Add min/max values to prevent runaway values
+3. **Watch the sparklines**: They reveal oscillations and trends
+4. **Export often**: Save your work before major changes
+5. **Name nodes clearly**: Good labels make models easier to understand
+
+---
+
+## Example Models
+
+### Simple Growth
+
+```
+[Population] ---(+0.1)---> [Population]
+```
+A node feeding back into itself with positive polarity creates exponential growth.
+
+### Predator-Prey
+
+```
+[Rabbits] ---(+0.5)---> [Foxes]
+[Foxes] ---(-0.3)---> [Rabbits]
+```
+Classic oscillating system where predators and prey influence each other.
+
+### Feedback Loop
+
+```
+[Demand] ---(+0.4)---> [Production]
+[Production] ---(-0.2)---> [Demand]
+```
+Negative feedback creates stability; positive feedback amplifies changes.
+
+---
+
+## Getting Help
+
+- **GitHub Issues**: Report bugs or request features
+- **README.md**: Technical documentation and setup instructions
+
+---
+
+*Modelium is open source software released under the MIT License.*
