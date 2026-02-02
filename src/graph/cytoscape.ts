@@ -1,5 +1,5 @@
 import cytoscape, { type Core, type ElementDefinition } from 'cytoscape';
-import type { ModeliumModel } from '../model/schema.ts';
+import type { ModeliumModel, ModeliumNode, NodeType, EventType } from '../model/schema.ts';
 import { createNodeSparkline } from './sparkline.ts';
 
 let cy: Core | null = null;
@@ -11,6 +11,31 @@ const MAX_HISTORY_LENGTH = 100;
 const COLOR_MIN = '#4a9eff';    // Blue - at min value
 const COLOR_MID = '#fbbf24';    // Yellow - at midpoint
 const COLOR_MAX = '#ef4444';    // Red - at max value
+
+// Event node colors
+const COLOR_RANDOM_EVENT = '#a855f7';    // Purple - random events
+const COLOR_RANDOM_EVENT_BORDER = '#9333ea';
+const COLOR_FIXED_EVENT = '#f59e0b';     // Amber - fixed events
+const COLOR_FIXED_EVENT_BORDER = '#d97706';
+
+/**
+ * SVG icon for random events (lightning bolt).
+ */
+const RANDOM_EVENT_ICON = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" opacity="0.3">
+  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+</svg>
+`)}`;
+
+/**
+ * SVG icon for fixed interval events (clock).
+ */
+const FIXED_EVENT_ICON = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" opacity="0.3">
+  <circle cx="12" cy="12" r="9"/>
+  <path d="M12 6v6l4 2"/>
+</svg>
+`)}`;
 
 /**
  * Formats a numeric value to fit inside a node.
@@ -26,16 +51,37 @@ function formatValue(value: number): string {
 
 /**
  * Computes the multi-line label for a node.
- * Format: label\nvalue\n[min - max]
+ * Format: label\nvalue\n[min - max] or interval info for events
  */
-function computeNodeLabel(label: string, value: number, min: number | undefined, max: number | undefined): string {
+function computeNodeLabel(
+  label: string,
+  value: number,
+  min: number | undefined,
+  max: number | undefined,
+  nodeType?: string,
+  eventType?: string,
+  interval?: number,
+  intervalMin?: number,
+  intervalMax?: number
+): string {
   const lines: string[] = [label, formatValue(value)];
   
-  // Add bounds line if min or max is defined
-  if (min !== undefined || max !== undefined) {
-    const minStr = min !== undefined ? formatValue(min) : '';
-    const maxStr = max !== undefined ? formatValue(max) : '';
-    lines.push(`[${minStr} - ${maxStr}]`);
+  // For event nodes, show interval info instead of min/max bounds
+  if (nodeType === 'event') {
+    if (eventType === 'random' && (intervalMin !== undefined || intervalMax !== undefined)) {
+      const minStr = intervalMin !== undefined ? String(intervalMin) : '1';
+      const maxStr = intervalMax !== undefined ? String(intervalMax) : minStr;
+      lines.push(`[${minStr}-${maxStr} steps]`);
+    } else if (eventType === 'fixed' && interval !== undefined) {
+      lines.push(`[every ${interval}]`);
+    }
+  } else {
+    // Regular nodes: show bounds line if min or max is defined
+    if (min !== undefined || max !== undefined) {
+      const minStr = min !== undefined ? formatValue(min) : '';
+      const maxStr = max !== undefined ? formatValue(max) : '';
+      lines.push(`[${minStr} - ${maxStr}]`);
+    }
   }
   
   return lines.join('\n');
@@ -129,6 +175,12 @@ function modelToElements(model: ModeliumModel): ElementDefinition[] {
         value: node.value,
         min: node.min,
         max: node.max,
+        // Event node fields
+        nodeType: node.nodeType,
+        eventType: node.eventType,
+        intervalMin: node.intervalMin,
+        intervalMax: node.intervalMax,
+        interval: node.interval,
       },
     });
   }
@@ -156,16 +208,39 @@ export function getModel(): ModeliumModel {
     throw new Error('Cytoscape not initialized');
   }
 
-  const nodes = cy.nodes().map((node) => {
-    const n: { id: string; label: string; value: number; min?: number; max?: number } = {
+  const nodes: ModeliumNode[] = cy.nodes().map((node) => {
+    const n: ModeliumNode = {
       id: node.id(),
       label: node.data('label') as string,
       value: node.data('value') as number,
     };
-    const min = node.data('min') as number | undefined;
-    const max = node.data('max') as number | undefined;
-    if (min !== undefined) n.min = min;
-    if (max !== undefined) n.max = max;
+
+    const nodeType = node.data('nodeType') as NodeType | undefined;
+    if (nodeType && nodeType !== 'regular') {
+      n.nodeType = nodeType;
+    }
+
+    if (nodeType === 'event') {
+      const eventType = node.data('eventType') as EventType | undefined;
+      if (eventType) n.eventType = eventType;
+
+      if (eventType === 'random') {
+        const intervalMin = node.data('intervalMin') as number | undefined;
+        const intervalMax = node.data('intervalMax') as number | undefined;
+        if (intervalMin !== undefined) n.intervalMin = intervalMin;
+        if (intervalMax !== undefined) n.intervalMax = intervalMax;
+      } else if (eventType === 'fixed') {
+        const interval = node.data('interval') as number | undefined;
+        if (interval !== undefined) n.interval = interval;
+      }
+    } else {
+      // Regular node fields
+      const min = node.data('min') as number | undefined;
+      const max = node.data('max') as number | undefined;
+      if (min !== undefined) n.min = min;
+      if (max !== undefined) n.max = max;
+    }
+
     return n;
   });
 
@@ -253,7 +328,12 @@ export function initGraph(
             const value = node.data('value') as number ?? 0;
             const min = node.data('min') as number | undefined;
             const max = node.data('max') as number | undefined;
-            return computeNodeLabel(label, value, min, max);
+            const nodeType = node.data('nodeType') as string | undefined;
+            const eventType = node.data('eventType') as string | undefined;
+            const interval = node.data('interval') as number | undefined;
+            const intervalMin = node.data('intervalMin') as number | undefined;
+            const intervalMax = node.data('intervalMax') as number | undefined;
+            return computeNodeLabel(label, value, min, max, nodeType, eventType, interval, intervalMin, intervalMax);
           },
           'color': '#fff',
           'text-valign': 'center',
@@ -273,6 +353,36 @@ export function initGraph(
           'transition-property': 'background-color, border-color',
           'transition-duration': 150,
         },
+      },
+      // Random event nodes - purple diamond with lightning bolt
+      {
+        selector: 'node[nodeType = "event"][eventType = "random"]',
+        style: {
+          'shape': 'diamond',
+          'background-color': COLOR_RANDOM_EVENT,
+          'border-color': COLOR_RANDOM_EVENT_BORDER,
+          'background-image': RANDOM_EVENT_ICON,
+          'background-fit': 'contain',
+          'background-width': '50%',
+          'background-height': '50%',
+          'background-position-x': '50%',
+          'background-position-y': '50%',
+        } as cytoscape.Css.Node,
+      },
+      // Fixed interval event nodes - amber diamond with clock
+      {
+        selector: 'node[nodeType = "event"][eventType = "fixed"]',
+        style: {
+          'shape': 'diamond',
+          'background-color': COLOR_FIXED_EVENT,
+          'border-color': COLOR_FIXED_EVENT_BORDER,
+          'background-image': FIXED_EVENT_ICON,
+          'background-fit': 'contain',
+          'background-width': '50%',
+          'background-height': '50%',
+          'background-position-x': '50%',
+          'background-position-y': '50%',
+        } as cytoscape.Css.Node,
       },
       {
         selector: 'edge',
@@ -371,18 +481,28 @@ export function updateNodeValues(values: Record<string, number>): void {
     if (node.length > 0) {
       node.data('value', value);
 
-      // Apply value-based coloring
-      const min = node.data('min') as number | undefined;
-      const max = node.data('max') as number | undefined;
-      const bgColor = calculateNodeColor(value, min, max);
-      const borderColor = darkenColor(bgColor, 0.2);
+      const nodeType = node.data('nodeType') as string | undefined;
+      const eventType = node.data('eventType') as string | undefined;
 
-      node.style('background-color', bgColor);
-      node.style('border-color', borderColor);
+      // Apply value-based coloring only for regular nodes
+      if (nodeType !== 'event') {
+        const min = node.data('min') as number | undefined;
+        const max = node.data('max') as number | undefined;
+        const bgColor = calculateNodeColor(value, min, max);
+        const borderColor = darkenColor(bgColor, 0.2);
+
+        node.style('background-color', bgColor);
+        node.style('border-color', borderColor);
+      }
 
       // Refresh label to show updated value
       const label = node.data('label') as string || '';
-      node.style('label', computeNodeLabel(label, value, min, max));
+      const min = node.data('min') as number | undefined;
+      const max = node.data('max') as number | undefined;
+      const interval = node.data('interval') as number | undefined;
+      const intervalMin = node.data('intervalMin') as number | undefined;
+      const intervalMax = node.data('intervalMax') as number | undefined;
+      node.style('label', computeNodeLabel(label, value, min, max, nodeType, eventType, interval, intervalMin, intervalMax));
     }
   }
 }
@@ -406,10 +526,24 @@ export function resetHighlights(): void {
   if (!cy) return;
 
   cy.nodes().removeClass('breached');
-  // Reset colors to default blue
+  // Reset colors based on node type
   cy.nodes().forEach((node) => {
-    node.style('background-color', COLOR_MIN);
-    node.style('border-color', darkenColor(COLOR_MIN, 0.2));
+    const nodeType = node.data('nodeType') as string | undefined;
+    const eventType = node.data('eventType') as string | undefined;
+
+    if (nodeType === 'event') {
+      if (eventType === 'random') {
+        node.style('background-color', COLOR_RANDOM_EVENT);
+        node.style('border-color', COLOR_RANDOM_EVENT_BORDER);
+      } else if (eventType === 'fixed') {
+        node.style('background-color', COLOR_FIXED_EVENT);
+        node.style('border-color', COLOR_FIXED_EVENT_BORDER);
+      }
+    } else {
+      // Regular nodes reset to default blue
+      node.style('background-color', COLOR_MIN);
+      node.style('border-color', darkenColor(COLOR_MIN, 0.2));
+    }
   });
 }
 
