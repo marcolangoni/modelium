@@ -137,3 +137,23 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Build outputs
+dist/
+dist-ssr/
+out/
+
+# Vite / tooling
+.vite/
+*.tsbuildinfo
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Optional: local-only scratch files
+*.tmp
+*.bak
