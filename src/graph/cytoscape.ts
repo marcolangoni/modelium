@@ -1,7 +1,11 @@
 import cytoscape, { type Core, type ElementDefinition } from 'cytoscape';
 import type { ModeliumModel } from '../model/schema.ts';
+import { createNodeSparkline } from './sparkline.ts';
 
 let cy: Core | null = null;
+
+// Maximum history length per node
+const MAX_HISTORY_LENGTH = 100;
 
 /**
  * Converts a ModeliumModel to Cytoscape elements format.
@@ -111,6 +115,11 @@ export function initGraph(container: HTMLElement, model: ModeliumModel): Core {
           'height': 60,
           'border-width': 2,
           'border-color': '#2a7edf',
+          'background-fit': 'contain',
+          'background-clip': 'none',
+          'background-width': '80%',
+          'background-height': '40%',
+          'background-position-y': '75%',
         },
       },
       {
@@ -205,4 +214,51 @@ export function resetHighlights(): void {
   if (!cy) return;
 
   cy.nodes().removeClass('breached');
+}
+
+/**
+ * Returns the Cytoscape instance.
+ */
+export function getCytoscape(): Core | null {
+  return cy;
+}
+
+/**
+ * Appends values to node history for sparkline rendering.
+ */
+export function appendNodeHistory(values: Record<string, number>): void {
+  if (!cy) return;
+
+  for (const [nodeId, value] of Object.entries(values)) {
+    const node = cy.getElementById(nodeId);
+    if (node.length > 0) {
+      const history: number[] = node.data('history') || [];
+      history.push(value);
+      
+      // Limit history length
+      if (history.length > MAX_HISTORY_LENGTH) {
+        history.shift();
+      }
+      
+      node.data('history', history);
+      
+      // Update sparkline image
+      const sparklineUrl = createNodeSparkline(history);
+      if (sparklineUrl) {
+        node.style('background-image', sparklineUrl);
+      }
+    }
+  }
+}
+
+/**
+ * Clears all node history (sparklines).
+ */
+export function clearNodeHistory(): void {
+  if (!cy) return;
+
+  cy.nodes().forEach((node) => {
+    node.data('history', []);
+    node.style('background-image', 'none');
+  });
 }

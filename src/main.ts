@@ -2,7 +2,8 @@
  * Modelium - Main Entry Point
  */
 
-import { initGraph } from './graph/cytoscape.ts';
+import { initGraph, getCytoscape } from './graph/cytoscape.ts';
+import { initInteractions } from './graph/interactions.ts';
 import { seedModel } from './model/seed.ts';
 import { initToolbar } from './ui/toolbar.ts';
 
@@ -21,6 +22,12 @@ function main(): void {
 
   // Initialize Cytoscape graph with seed model
   initGraph(cyContainer, seedModel);
+
+  // Initialize graph interactions (editing)
+  const cy = getCytoscape();
+  if (cy) {
+    initInteractions(cy);
+  }
 
   // Initialize toolbar
   initToolbar(toolbarContainer);
