@@ -11,10 +11,11 @@ Modelium is a lightweight System Dynamics playground for building causal graphs 
 3. [Working with Nodes](#working-with-nodes)
 4. [Working with Edges](#working-with-edges)
 5. [Running Simulations](#running-simulations)
-6. [Import and Export](#import-and-export)
-7. [Understanding the Model](#understanding-the-model)
-8. [Keyboard Shortcuts](#keyboard-shortcuts)
-9. [Troubleshooting](#troubleshooting)
+6. [Debug Controls](#debug-controls)
+7. [Import and Export](#import-and-export)
+8. [Understanding the Model](#understanding-the-model)
+9. [Keyboard Shortcuts](#keyboard-shortcuts)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -54,8 +55,12 @@ The toolbar at the top of the screen contains:
 | **Import JSON** | Load a model from a JSON file |
 | **Play** | Start the simulation |
 | **Pause** | Pause a running simulation |
+| **Step** | Execute a single simulation step (visible when paused) |
 | **Resume** | Continue a paused simulation |
 | **Reset** | Stop simulation and restore initial values |
+| **- / +** | Decrease / increase simulation speed |
+| **Speed indicator** | Shows current speed (1x, 2x, 0.5x slower, etc.) |
+| **Clear Breakpoints** | Remove all breakpoints (visible when breakpoints exist) |
 
 The status indicator on the right shows the current simulation state.
 
@@ -214,6 +219,96 @@ Click **Reset** to:
 
 ---
 
+## Debug Controls
+
+Modelium provides IDE-like debugging controls for detailed simulation analysis.
+
+### Speed Control
+
+Adjust how fast the simulation runs:
+
+| Control | Effect |
+|---------|--------|
+| **-** button or `[` or `-` key | Slow down (halve speed) |
+| **+** button or `]` or `+` key | Speed up (double speed) |
+
+The speed indicator in the toolbar shows the current speed:
+- **4x** - 4 times faster than normal
+- **2x** - 2 times faster
+- **1x** - Normal speed
+- **2x slower** - Half speed
+- **4x slower** - Quarter speed
+
+Speed can range from **4x faster** to **32x slower**.
+
+### Step-by-Step Execution
+
+When the simulation is paused, you can execute one step at a time:
+
+1. **Pause** the simulation (or it pauses automatically at a breakpoint)
+2. Click the **Step** button, or press `S` or `N`
+3. The simulation advances exactly one step
+4. Observe the value changes
+5. Repeat to step through the simulation
+
+This is useful for:
+- Debugging unexpected behavior
+- Understanding exactly when values change
+- Watching breakpoint conditions approach their thresholds
+
+### Breakpoints
+
+Breakpoints pause the simulation when a node's value meets a specified condition.
+
+#### Adding a Breakpoint
+
+1. **Right-click** on a node
+2. Select **Add Breakpoint...**
+3. Choose a condition:
+   - `>=` (greater than or equal)
+   - `<=` (less than or equal)
+   - `>` (greater than)
+   - `<` (less than)
+   - `=` (equal to)
+4. Enter the threshold value
+5. Click **Save**
+
+The node now shows an **orange border** indicating it has a breakpoint.
+
+#### How Breakpoints Work
+
+During simulation, after each step:
+1. All breakpoints are checked
+2. If any condition is met, the simulation pauses
+3. The status shows which breakpoint was hit and the actual value
+4. The node with the hit breakpoint is highlighted
+
+#### Editing a Breakpoint
+
+1. **Right-click** on a node with a breakpoint
+2. Select **Edit Breakpoint...**
+3. Modify the condition or value
+4. Click **Save**
+
+#### Removing Breakpoints
+
+**Single breakpoint:**
+1. Right-click on the node
+2. Select **Remove Breakpoint**
+
+**All breakpoints:**
+1. Click **Clear Breakpoints** in the toolbar
+
+#### Breakpoint Tips
+
+- Set breakpoints before critical thresholds to catch them
+- Use `>=` for upper bounds, `<=` for lower bounds
+- Multiple nodes can have breakpoints simultaneously
+- Breakpoints persist until you remove them or import a new model
+- After a breakpoint hit, use **Step** to advance carefully or **Resume** to continue
+
+---
+
 ## Import and Export
 
 ### Exporting Your Model
@@ -290,10 +385,28 @@ Modelium models are stored as JSON with this structure:
 
 ## Keyboard Shortcuts
 
+### Simulation Controls
+
+| Key | Action |
+|-----|--------|
+| **Space** | Toggle play/pause |
+| **S** or **N** | Step (execute single step when paused) |
+| **[** or **-** | Slow down (halve speed) |
+| **]** or **+** | Speed up (double speed) |
+
+### Modal Dialogs
+
 | Key | Action |
 |-----|--------|
 | **Escape** | Close modal dialog |
 | **Enter** | Save modal (when in input field) |
+
+### Context Menu
+
+| Action | How |
+|--------|-----|
+| Open context menu | Right-click on a node |
+| Close context menu | Click elsewhere or press Escape |
 
 ---
 
@@ -327,6 +440,19 @@ Modelium models are stored as JSON with this structure:
 - Sparklines only show after 2+ simulation steps
 - They appear inside the node as a small line chart
 - Reset clears sparkline history
+
+### Breakpoint doesn't trigger
+
+- Verify the condition and value are correct
+- Check that the node's value actually reaches the threshold
+- Use step-by-step execution to watch the value approach the threshold
+- Try using `>=` instead of `=` for exact values (floating-point precision)
+
+### Keyboard shortcuts don't work
+
+- Make sure the focus is not in a text input field
+- Click on the canvas first to ensure focus is on the main application
+- Check that a modal dialog is not open
 
 ---
 
